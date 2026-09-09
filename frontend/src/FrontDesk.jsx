@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { reasonLabel, request } from './api.js';
+import { appointmentCategoryLabel, reasonLabel, request } from './api.js';
 
 function purpose(visit) {
-  return visit.visitType === 'APPOINTMENT' ? visit.appointmentCategory : reasonLabel(visit.reason);
+  return visit.visitType === 'APPOINTMENT' ? appointmentCategoryLabel(visit.appointmentCategory) : reasonLabel(visit.reason);
 }
 
 function routingMessage(detail) {

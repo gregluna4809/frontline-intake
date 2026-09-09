@@ -25,14 +25,20 @@ public class VisitService {
     }
 
     @Transactional
-    public Visit checkIn(Visit.Reason reason) {
-        Visit visit = repository.create(reason);
+    public Visit checkIn(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory) {
+        boolean walkIn = visitType == Visit.VisitType.WALK_IN && reason != null && appointmentCategory == null;
+        boolean appointment = visitType == Visit.VisitType.APPOINTMENT && appointmentCategory != null && reason == null;
+        if (!walkIn && !appointment) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "WALK_IN requires only reason; APPOINTMENT requires only appointmentCategory.");
+        }
+        Visit visit = repository.create(visitType, reason, appointmentCategory);
         repository.recordCheckIn(visit);
         return visit;
     }
 
     @Transactional(readOnly = true)
-    public List<Visit> list(Visit.Status status) {
+    public List<VisitQueueItem> list(Visit.Status status) {
         return repository.findAll(status);
     }
 
@@ -60,6 +66,12 @@ public class VisitService {
         Visit.Status next = resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE;
         Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id());
         return describe(updated);
+    }
+
+    @Transactional
+    public VisitDetail close(long id, long expectedVersion) {
+        Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
+        return describe(transition(previous, Visit.Status.CLOSED, previous.customerId(), previous.resourceId()));
     }
 
     private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId) {

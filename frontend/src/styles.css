@@ -28,6 +28,8 @@ main { max-width: 1120px; padding: 62px 24px 42px; margin: auto; min-height: cal
 h1 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -1.2px; line-height: 1.15; margin: 0 0 16px; font-weight: 650; }
 .intro { color: #60716b; line-height: 1.7; margin: 0 0 34px; }
 fieldset { border: 0; margin: 0; padding: 0; }
+legend { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.intake-type { margin-bottom: 26px; }
 .reason-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .reason { display: flex; gap: 16px; align-items: center; background: #fff; border: 1px solid #d4dfd8; border-radius: 12px; padding: 24px; min-height: 100px; cursor: pointer; font-weight: 600; transition: border-color .15s, background .15s; }
 .reason:hover { border-color: #638d7d; }

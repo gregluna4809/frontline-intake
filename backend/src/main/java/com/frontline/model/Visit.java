@@ -16,6 +16,7 @@ public record Visit(
         long version
 ) {
     public enum VisitType { WALK_IN, APPOINTMENT }
+    public enum AppointmentCategory { REEMPLOYMENT, CAREER_SERVICES, VETERANS }
     public enum Reason {
         PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES,
         BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER

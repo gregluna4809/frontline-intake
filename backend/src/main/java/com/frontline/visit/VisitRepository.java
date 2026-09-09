@@ -1,6 +1,7 @@
 package com.frontline.visit;
 
 import com.frontline.model.Visit;
+import com.frontline.model.Customer;
 import com.frontline.model.VisitEvent;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,16 +20,21 @@ public class VisitRepository {
         this.jdbc = jdbc;
     }
 
-    public Visit create(Visit.Reason reason) {
+    public Visit create(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory) {
+        boolean appointment = visitType == Visit.VisitType.APPOINTMENT;
         return jdbc.sql("""
-                WITH ticket_number AS (SELECT nextval('visit_ticket_sequence') AS value)
-                INSERT INTO visit (ticket, visit_type, reason, status, created_at, version)
-                SELECT 'B' || lpad(value::text, greatest(4, length(value::text)), '0'),
-                       'WALK_IN', :reason, 'CHECKED_IN', CURRENT_TIMESTAMP, 0
+                WITH ticket_number AS (SELECT nextval(CAST(:sequence AS regclass)) AS value)
+                INSERT INTO visit (ticket, visit_type, reason, appointment_category, status, created_at, version)
+                SELECT :prefix || lpad(value::text, greatest(4, length(value::text)), '0'),
+                       :visitType, :reason, :category, 'CHECKED_IN', CURRENT_TIMESTAMP, 0
                 FROM ticket_number
                 RETURNING *
                 """)
-                .param("reason", reason.name())
+                .param("sequence", appointment ? "appointment_ticket_sequence" : "visit_ticket_sequence")
+                .param("prefix", appointment ? "A" : "B")
+                .param("visitType", visitType.name())
+                .param("reason", reason == null ? null : reason.name(), Types.VARCHAR)
+                .param("category", appointmentCategory == null ? null : appointmentCategory.name(), Types.VARCHAR)
                 .query(this::mapVisit)
                 .single();
     }
@@ -43,21 +49,33 @@ public class VisitRepository {
                 .update();
     }
 
-    public List<Visit> findAll(Visit.Status status) {
-        if (status == null) {
-            return jdbc.sql("SELECT * FROM visit ORDER BY created_at, id")
-                    .query(this::mapVisit).list();
-        }
-        return jdbc.sql("SELECT * FROM visit WHERE status = :status ORDER BY created_at, id")
-                .param("status", status.name())
-                .query(this::mapVisit).list();
+    public List<VisitQueueItem> findAll(Visit.Status status) {
+        String sql = """
+                SELECT v.*, c.display_name, c.language, c.veteran,
+                    (SELECT max(e.created_at) FROM visit_event e
+                     WHERE e.visit_id = v.id AND e.to_status = 'WAITING_STAFF') AS waiting_since
+                FROM visit v LEFT JOIN customer c ON c.id = v.customer_id
+                """;
+        if (status != null) sql += " WHERE v.status = :status";
+        sql += " ORDER BY v.created_at, v.id";
+        var query = jdbc.sql(sql);
+        if (status != null) query.param("status", status.name());
+        return query.query((rs, row) -> {
+            Visit visit = mapVisit(rs, row);
+            Customer customer = visit.customerId() == null ? null : new Customer(
+                    visit.customerId(), rs.getString("display_name"),
+                    Customer.Language.valueOf(rs.getString("language")), rs.getBoolean("veteran"));
+            Timestamp waitingSince = rs.getTimestamp("waiting_since");
+            return new VisitQueueItem(visit, customer, waitingSince == null ? null : waitingSince.toInstant());
+        }).list();
     }
 
     public Optional<Visit> transition(Visit previous, Visit.Status next, Long customerId, Long resourceId) {
         return jdbc.sql("""
                 UPDATE visit
                 SET status = :next, customer_id = :customerId, resource_id = :resourceId,
-                    version = version + 1
+                    version = version + 1,
+                    closed_at = CASE WHEN :next = 'CLOSED' THEN CURRENT_TIMESTAMP ELSE closed_at END
                 WHERE id = :id AND version = :version AND status = :previous
                 RETURNING *
                 """)
@@ -73,11 +91,12 @@ public class VisitRepository {
     public void recordTransition(Visit previous, Visit updated) {
         jdbc.sql("""
                 INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at)
-                VALUES (:visitId, :fromStatus, :toStatus, 'FRONT_DESK', CURRENT_TIMESTAMP)
+                VALUES (:visitId, :fromStatus, :toStatus, :actor, CURRENT_TIMESTAMP)
                 """)
                 .param("visitId", updated.id())
                 .param("fromStatus", previous.status().name())
                 .param("toStatus", updated.status().name())
+                .param("actor", previous.status() == Visit.Status.WAITING_STAFF ? "APPOINTMENTS" : "FRONT_DESK")
                 .update();
     }
 

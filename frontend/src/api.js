@@ -27,3 +27,13 @@ export const reasons = [
 export function reasonLabel(value) {
   return reasons.find(([code]) => code === value)?.[1] || value;
 }
+
+export const appointmentCategories = [
+  ['REEMPLOYMENT', 'Reemployment'],
+  ['CAREER_SERVICES', 'Career Services'],
+  ['VETERANS', 'Veterans'],
+];
+
+export function appointmentCategoryLabel(value) {
+  return appointmentCategories.find(([code]) => code === value)?.[1] || value;
+}

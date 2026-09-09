@@ -10,7 +10,7 @@ afterEach(() => {
   window.history.replaceState({}, '', '/kiosk');
 });
 
-test('kiosk sends only the selected reason and displays the returned ticket', async () => {
+test('kiosk sends walk-in type and selected reason and displays the returned ticket', async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     json: async () => ({ id: 1, ticket: 'B0001', reason: 'PHONE_ACCESS' }),
@@ -19,12 +19,13 @@ test('kiosk sends only the selected reason and displays the returned ticket', as
   render(<App />);
   const user = userEvent.setup();
   expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
+  await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
   await user.click(screen.getByRole('radio', { name: /Phone Access/ }));
   await user.click(screen.getByRole('button', { name: 'Check in' }));
   expect(await screen.findByText('B0001')).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledWith('/api/visits', expect.objectContaining({
     method: 'POST',
-    body: '{"reason":"PHONE_ACCESS"}',
+    body: '{"visitType":"WALK_IN","reason":"PHONE_ACCESS"}',
   }));
   expect(screen.getByText('Synthetic demo — no real data')).toBeTruthy();
   await user.click(screen.getByRole('button', { name: 'Start a new check-in' }));
@@ -41,6 +42,7 @@ test('failed check-in shows an error and permits retry without losing the reason
   vi.stubGlobal('fetch', fetchMock);
   render(<App />);
   const user = userEvent.setup();
+  await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
   await user.click(screen.getByRole('radio', { name: /Job Search/ }));
   await user.click(screen.getByRole('button', { name: 'Check in' }));
   expect(await screen.findByRole('alert')).toBeTruthy();
@@ -78,4 +80,53 @@ test('front desk reports a failed queue load and can refresh successfully', asyn
   await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh queue' }));
   expect(await screen.findByText(/No checked-in visits yet/)).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
+});
+test.each([
+  ['REEMPLOYMENT', 'Reemployment'],
+  ['CAREER_SERVICES', 'Career Services'],
+  ['VETERANS', 'Veterans'],
+])('kiosk creates %s appointment and discards the previous walk-in choice', async (category, label) => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      id: 1, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: category,
+    }),
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<App />);
+  const user = userEvent.setup();
+  expect(screen.queryByRole('radio', { name: /Phone Access/ })).toBeNull();
+  await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
+  await user.click(screen.getByRole('radio', { name: /Phone Access/ }));
+  await user.click(screen.getByRole('radio', { name: 'Appointment' }));
+  expect(screen.queryByRole('radio', { name: /Phone Access/ })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
+  await user.click(screen.getByRole('radio', { name: new RegExp(label) }));
+  await user.click(screen.getByRole('button', { name: 'Check in' }));
+  expect(await screen.findByText('A0001')).toBeTruthy();
+  expect(screen.getByText(label)).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledWith('/api/visits', expect.objectContaining({
+    method: 'POST',
+    body: JSON.stringify({ visitType: 'APPOINTMENT', appointmentCategory: category }),
+  }));
+});
+
+test('switching from appointment to walk-in discards the category', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ id: 1, ticket: 'B0001', visitType: 'WALK_IN', reason: 'JOB_SEARCH' }),
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<App />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('radio', { name: 'Appointment' }));
+  await user.click(screen.getByRole('radio', { name: /Veterans/ }));
+  await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
+  expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
+  await user.click(screen.getByRole('radio', { name: /Job Search/ }));
+  await user.click(screen.getByRole('button', { name: 'Check in' }));
+  expect(await screen.findByText('B0001')).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledWith('/api/visits', expect.objectContaining({
+    body: '{"visitType":"WALK_IN","reason":"JOB_SEARCH"}',
+  }));
 });

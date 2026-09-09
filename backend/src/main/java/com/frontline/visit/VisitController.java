@@ -22,13 +22,13 @@ public class VisitController {
 
     @PostMapping
     public ResponseEntity<Visit> create(@Valid @RequestBody CheckInRequest request) {
-        Visit visit = service.checkIn(request.reason());
+        Visit visit = service.checkIn(request.visitType(), request.reason(), request.appointmentCategory());
         return ResponseEntity.created(URI.create("/api/visits/" + visit.id()))
                 .eTag(Long.toString(visit.version())).body(visit);
     }
 
     @GetMapping
-    public List<Visit> list(@RequestParam(required = false) Visit.Status status) {
+    public List<VisitQueueItem> list(@RequestParam(required = false) Visit.Status status) {
         return service.list(status);
     }
 
@@ -56,6 +56,13 @@ public class VisitController {
         return ResponseEntity.ok().eTag(Long.toString(detail.visit().version())).body(detail);
     }
 
+    @PostMapping("/{id}/close")
+    public ResponseEntity<VisitService.VisitDetail> close(
+            @PathVariable long id,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        return response(service.close(id, expectedVersion(version)));
+    }
+
     private long expectedVersion(String header) {
         if (header == null) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
@@ -72,6 +79,8 @@ public class VisitController {
         }
     }
 
-    public record CheckInRequest(@NotNull Visit.Reason reason) {}
+    public record CheckInRequest(
+            @NotNull Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory
+    ) {}
     public record IdentifyRequest(@NotNull @Positive Long customerId) {}
 }
