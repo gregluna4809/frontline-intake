@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
-import { waitingTime } from './Appointments.jsx';
+import { waitingTime } from './time.js';
 
 afterEach(() => {
   cleanup();

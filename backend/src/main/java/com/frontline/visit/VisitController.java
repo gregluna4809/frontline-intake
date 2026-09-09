@@ -79,6 +79,20 @@ public class VisitController {
         }
     }
 
+    @PostMapping("/{id}/assign")
+    public ResponseEntity<VisitService.VisitDetail> assign(
+            @PathVariable long id,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        return response(service.assign(id, expectedVersion(version)));
+    }
+
+    @PostMapping("/{id}/left")
+    public ResponseEntity<VisitService.VisitDetail> left(
+            @PathVariable long id,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        return response(service.left(id, expectedVersion(version)));
+    }
+
     public record CheckInRequest(
             @NotNull Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory
     ) {}

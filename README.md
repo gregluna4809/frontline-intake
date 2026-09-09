@@ -2,12 +2,12 @@
 
 Standalone Career Center intake and routing prototype. Synthetic data only; production use is out of scope.
 
-## Kiosk, front desk, and appointments
+## Kiosk, front desk, resource room, and appointments
 
 - Java 21 / Spring Boot 3.5.16, Maven wrapper 3.3.4 with Maven 3.9.11.
 - PostgreSQL 17 in Docker Compose; Flyway creates Customer, Resource, Visit, and VisitEvent tables.
 - 50 synthetic customers, 6 phones, 8 computers, and 2 stations.
-- React 19 / Vite 8 kiosk, front-desk, and appointments routes.
+- React 19 / Vite 8 kiosk, front-desk, resource-room, and appointments routes.
 - Kiosk starts with Walk-In or Appointment. Walk-ins choose a reason; appointments choose REEMPLOYMENT, CAREER_SERVICES, or VETERANS.
 - Check-in creates a CHECKED_IN visit and its VisitEvent in one transaction. Walk-ins use B tickets; appointments use A tickets with an independent sequence.
 - Front desk lists CHECKED_IN visits in arrival order and refreshes every 5 seconds.
@@ -15,7 +15,11 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - Identify and route use optimistic version checks and write FRONT_DESK events in the same transaction as the visit and resource updates.
 - Appointments lists WAITING_STAFF visits with ticket, customer, category, and elapsed staff waiting time. Close changes WAITING_STAFF to CLOSED, stamps closedAt, increments version, and records an APPOINTMENTS event atomically.
 
-Resource-room actions, closing resource visits, and left belong to step 3. The resource-room option in the role switcher is disabled until then. No login, app Dockerfile, or deployment is included.
+- Resource room groups Phones, Computers, and Stations, showing status and the current ticket/customer for occupied resources. Close and Left release resources atomically.
+- WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
+- Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
+
+Steps 1–3 are implemented. No login, app Dockerfile, or deployment is included. Full end-to-end verification and the app Dockerfile remain step 4.
 
 ## Run on Windows PowerShell
 
@@ -43,7 +47,7 @@ Prerequisites: Java 21, Node.js 22.12+ (Node 24 is supported), and Docker Deskto
    npm run dev
    ```
 
-4. Open http://127.0.0.1:5173/kiosk. Choose Walk-In and a reason, or Appointment and a category, then check in. Open http://127.0.0.1:5173/front-desk in another tab to select the ticket, search for Demo Customer 001, attach that customer, and route the visit. Routed appointments appear at http://127.0.0.1:5173/appointments, where Close completes the visit.
+4. Open http://127.0.0.1:5173/kiosk. Choose Walk-In and a reason, or Appointment and a category, then check in. Open http://127.0.0.1:5173/front-desk in another tab to select the ticket, search for Demo Customer 001, attach that customer, and route the visit. Routed appointments appear at http://127.0.0.1:5173/appointments. Walk-ins appear at http://127.0.0.1:5173/resource-room; occupied tiles have Close/Left, and waiting entries have Assign/Left.
 
 Stop the backend and frontend with Ctrl+C in their terminals. Stop this project's database with `docker compose stop` from the root. The named volume retains data.
 
@@ -65,19 +69,24 @@ The default database credential is for this synthetic local demo. PostgreSQL is 
 | Method | Path | Result |
 | --- | --- | --- |
 | POST | /api/visits | Body: `{"visitType":"WALK_IN","reason":"PHONE_ACCESS"}` or `{"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT"}`; returns 201 with visit and Location header |
-| GET | /api/visits?status=CHECKED_IN | Visits matching the status, oldest first; also supports WAITING_STAFF |
+| GET | /api/visits?status=CHECKED_IN | Visits matching the status, oldest first; also supports WAITING_STAFF and WAITING_RESOURCE |
 | GET | /api/visits | All visits, oldest first |
 | GET | /api/visits/{id} | Object with `visit`, `events`, `customer`, `resource`, and `requiredResourceType`; includes an ETag |
 | GET | /api/customers?q= | Case-insensitive literal display-name search; at most 20 results, ordered by name and ID |
 | POST | /api/visits/{id}/identify | Body: `{"customerId":1}`; CHECKED_IN → IDENTIFIED |
 | POST | /api/visits/{id}/route | No body; IDENTIFIED → AT_RESOURCE, WAITING_RESOURCE, or WAITING_STAFF |
-| POST | /api/visits/{id}/close | No body; WAITING_STAFF → CLOSED |
+| POST | /api/visits/{id}/close | No body; AT_RESOURCE or WAITING_STAFF → CLOSED; stamps closedAt and frees the resource if present |
+| POST | /api/visits/{id}/left | No body; any status except CLOSED/LEFT → LEFT; stamps closedAt and frees the resource if present |
+| POST | /api/visits/{id}/assign | No body; WAITING_RESOURCE → AT_RESOURCE; 409 if no matching resource is free |
+| GET | /api/resources | Inventory with current visitId, ticket, customer, visitVersion, and assignedAt when occupied |
 
-Allowed reasons: PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER. Invalid request values return 400; an unknown visit returns 404. Unknown JSON fields are rejected. Identify, route, and close require an `If-Match` header containing the quoted version, such as `"0"`. Their response includes the updated detail and ETag. Missing versions return 428, malformed versions 400, stale versions 412, and invalid transitions 409. No mutation occurs on rejection.
+Allowed reasons: PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER. Invalid request values return 400; an unknown visit returns 404. Unknown JSON fields are rejected. Identify, route, assign, close, and left require an `If-Match` header containing the quoted version, such as `"0"`. Their response includes the updated detail and ETag. Missing versions return 428, malformed versions 400, stale versions 412, and invalid transitions 409. No mutation occurs on rejection.
 
 Creation requires visitType. WALK_IN requires reason and no appointmentCategory; APPOINTMENT requires appointmentCategory and no reason. Missing required fields, mixed non-null fields, and unknown category codes return 400. Optional null fields are treated as absent. Categories are REEMPLOYMENT, CAREER_SERVICES, and VETERANS.
 
-Queue items preserve the visit fields at the top level and add customer and waitingSince. waitingSince is the most recent WAITING_STAFF event timestamp, so waiting time excludes time spent at the kiosk/front desk. The appointments screen updates the displayed duration every second and reloads the queue every five seconds.
+Queue items preserve the visit fields at the top level and add customer, waitingSince, and requiredResourceType. waitingSince is the most recent event entering the current WAITING_STAFF or WAITING_RESOURCE status, so waiting time excludes time spent at the kiosk/front desk. Timers update every second; queues reload every five seconds.
+
+Inventory keeps id/type/label/status at the top level and adds the current visit's metadata. Only AT_RESOURCE visits are joined, so retained resource IDs on completed visits cannot show an old occupant. assignedAt is the latest AT_RESOURCE event. The UI flag threshold is RESOURCE_ALERT_MINUTES = 45 in frontend/src/ResourceRoom.jsx; exactly 45 minutes is not flagged.
 
 Customer search trims whitespace and treats wildcard characters literally. An empty search returns the first 20 customers. The front-desk search waits for typed input.
 
@@ -90,7 +99,7 @@ Customer search trims whitespace and treats wildcard characters literally. An em
 | WALK_IN / COMPUTER_ACCESS or JOB_SEARCH | COMPUTER |
 | WALK_IN / DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, or OTHER | STATION |
 
-A walk-in receives the lowest-labeled FREE resource of the required type. The resource becomes OCCUPIED and the visit becomes AT_RESOURCE. If none is free, the visit becomes WAITING_RESOURCE. The small inventory of that type is row-locked in label order during assignment so concurrent callers wait for a committed result. Resource reservation, the guarded version update, and the event commit or roll back together.
+A walk-in receives the lowest-labeled FREE resource of the required type. The resource becomes OCCUPIED and the visit becomes AT_RESOURCE. If none is free, the visit becomes WAITING_RESOURCE. The small inventory of that type is row-locked in label order during assignment so concurrent callers wait for a committed result. Resource reservation or release, the guarded version update, and the event commit or roll back together. Resource rows are locked before visit updates consistently. Close/Left retain the visit's resourceId as history while setting the resource FREE; the inventory only reports its current occupant.
 
 ## Simplest choices where the spec is silent
 
@@ -103,7 +112,8 @@ A walk-in receives the lowest-labeled FREE resource of the required type. The re
 - Plain React with JavaScript, system fonts, npm, and a Vite API proxy. The root URL shows the kiosk.
 - Migration V3 introduced appointment fields and statuses; V4 adds the independent appointment ticket sequence. Prior migrations and existing visit records are preserved. New appointment creation accepts only the three category codes above; legacy category labels remain readable.
 - A selected visit is retained in the `/front-desk?visit=...` URL so identification can be resumed after a refresh. Identifying removes the visit from CHECKED_IN immediately; its panel remains available for routing.
-- Front-desk mutation failures require reloading the selected visit before retrying. The appointments queue automatically refreshes after closing or a close failure, and never reuses a failed version without a successful refresh.
+- Front-desk mutation failures require reloading the selected visit before retrying. The appointments and resource-room screens refresh after mutations and failures. Resource-room actions stay disabled until both inventory and waiting-list reloads succeed.
+- Resource-room events use actor RESOURCE_ROOM, appointment events APPOINTMENTS, and front-desk events FRONT_DESK. No schema migration is needed for step 3.
 
 ## Verification
 
@@ -114,7 +124,7 @@ Set-Location C:\Projects\frontline\backend
 .\mvnw.cmd test
 ```
 
-The backend tests cover exact seeds, check-in/list/detail, request validation, customer search, identify, all six routing mappings, exhausted resources, appointment routing, version preconditions, event/optimistic-update rollback, and concurrent assignment. Appointment creation for each category, independent ticket sequences, mixed-input rejection, appointment closing, staff waiting timestamps, and close rollback are also covered. Ticket growth past B9999 remains covered.
+The backend tests cover exact seeds, check-in/list/detail, request validation, customer search, identify, all six routing mappings, exhausted resources, appointment routing, version preconditions, event/optimistic-update rollback, and concurrent assignment. Appointment creation for each category, independent ticket sequences, mixed-input rejection, appointment closing, staff waiting timestamps, and close rollback are also covered. Resource close/left, all allowed Left source statuses, terminal rejection, release rollback, waiting assignment, resource reuse, and competing close/left/assign calls are covered. Ticket growth past B9999 remains covered.
 
 ```powershell
 Set-Location C:\Projects\frontline\frontend
@@ -122,4 +132,4 @@ npm test
 npm run build
 ```
 
-Frontend tests cover both kiosk types, clearing incompatible choices, queue loading, customer attachment, routing outcomes, appointment waiting/closing, stale-version recovery, resuming an identified visit, and ignoring obsolete search responses. Full workflow end-to-end verification remains step 4.
+Frontend tests cover both kiosk types, clearing incompatible choices, queue loading, customer attachment, routing outcomes, appointment waiting/closing, stale-version recovery, resuming an identified visit, and ignoring obsolete search responses. Resource-room tests cover grouping and occupant details, the 45-minute boundary, availability-based Assign disabling, close/left/assign, conflicting assignment, and five-second polling. Full workflow end-to-end verification remains step 4.

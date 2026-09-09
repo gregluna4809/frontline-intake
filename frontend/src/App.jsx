@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { reasons, reasonLabel, appointmentCategories, appointmentCategoryLabel, request } from './api.js';
 import Appointments from './Appointments.jsx';
+import ResourceRoom from './ResourceRoom.jsx';
 import FrontDesk from './FrontDesk.jsx';
 
 function Kiosk() {
@@ -94,8 +95,9 @@ function Kiosk() {
 
 export default function App() {
   const path = window.location.pathname;
-  const role = path === '/appointments' ? 'appointments' : path === '/front-desk' ? 'front-desk' : 'kiosk';
-  const supported = ['/', '/kiosk', '/front-desk', '/appointments'].includes(path);
+  const role = path === '/' ? 'kiosk' : path.slice(1);
+  const screens = { kiosk: <Kiosk />, 'front-desk': <FrontDesk />, appointments: <Appointments />, 'resource-room': <ResourceRoom /> };
+  const supported = Object.hasOwn(screens, role);
 
   return (
     <>
@@ -109,13 +111,13 @@ export default function App() {
             <option value="kiosk">Kiosk</option>
             <option value="front-desk">Front desk</option>
             <option value="appointments">Appointments</option>
-            <option value="resource-room" disabled>Resource room (coming in step 3)</option>
+            <option value="resource-room">Resource room</option>
           </select>
         </label>
       </header>
       <main>
         {!supported ? <section><h1>Page not available</h1><a href="/kiosk">Return to kiosk</a></section> :
-          role === 'front-desk' ? <FrontDesk /> : role === 'appointments' ? <Appointments /> : <Kiosk />}
+          screens[role]}
       </main>
       <footer>Career Center · Synthetic intake demo</footer>
     </>

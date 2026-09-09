@@ -53,7 +53,8 @@ public class VisitRepository {
         String sql = """
                 SELECT v.*, c.display_name, c.language, c.veteran,
                     (SELECT max(e.created_at) FROM visit_event e
-                     WHERE e.visit_id = v.id AND e.to_status = 'WAITING_STAFF') AS waiting_since
+                     WHERE e.visit_id = v.id AND e.to_status = v.status
+                       AND e.to_status IN ('WAITING_STAFF', 'WAITING_RESOURCE')) AS waiting_since
                 FROM visit v LEFT JOIN customer c ON c.id = v.customer_id
                 """;
         if (status != null) sql += " WHERE v.status = :status";
@@ -66,7 +67,8 @@ public class VisitRepository {
                     visit.customerId(), rs.getString("display_name"),
                     Customer.Language.valueOf(rs.getString("language")), rs.getBoolean("veteran"));
             Timestamp waitingSince = rs.getTimestamp("waiting_since");
-            return new VisitQueueItem(visit, customer, waitingSince == null ? null : waitingSince.toInstant());
+            return new VisitQueueItem(visit, customer,
+                    waitingSince == null ? null : waitingSince.toInstant(), visit.requiredResourceType());
         }).list();
     }
 
@@ -75,7 +77,7 @@ public class VisitRepository {
                 UPDATE visit
                 SET status = :next, customer_id = :customerId, resource_id = :resourceId,
                     version = version + 1,
-                    closed_at = CASE WHEN :next = 'CLOSED' THEN CURRENT_TIMESTAMP ELSE closed_at END
+                    closed_at = CASE WHEN :next IN ('CLOSED', 'LEFT') THEN CURRENT_TIMESTAMP ELSE closed_at END
                 WHERE id = :id AND version = :version AND status = :previous
                 RETURNING *
                 """)
@@ -96,7 +98,11 @@ public class VisitRepository {
                 .param("visitId", updated.id())
                 .param("fromStatus", previous.status().name())
                 .param("toStatus", updated.status().name())
-                .param("actor", previous.status() == Visit.Status.WAITING_STAFF ? "APPOINTMENTS" : "FRONT_DESK")
+                .param("actor", switch (previous.status()) {
+                    case WAITING_STAFF -> "APPOINTMENTS";
+                    case AT_RESOURCE, WAITING_RESOURCE -> "RESOURCE_ROOM";
+                    default -> "FRONT_DESK";
+                })
                 .update();
     }
 

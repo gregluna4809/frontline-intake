@@ -7,6 +7,7 @@ import com.frontline.model.Visit;
 import com.frontline.model.VisitEvent;
 import com.frontline.resource.ResourceRepository;
 import java.util.List;
+import java.util.Arrays;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,7 +63,7 @@ public class VisitService {
         if (previous.visitType() == Visit.VisitType.APPOINTMENT) {
             return describe(transition(previous, Visit.Status.WAITING_STAFF, previous.customerId(), null));
         }
-        Resource resource = resources.assignLowestFree(requiredResourceType(previous)).orElse(null);
+        Resource resource = resources.assignLowestFree(previous.requiredResourceType()).orElse(null);
         Visit.Status next = resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE;
         Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id());
         return describe(updated);
@@ -70,8 +71,33 @@ public class VisitService {
 
     @Transactional
     public VisitDetail close(long id, long expectedVersion) {
-        Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
-        return describe(transition(previous, Visit.Status.CLOSED, previous.customerId(), previous.resourceId()));
+        Visit previous = requireStatus(id, expectedVersion, Visit.Status.AT_RESOURCE, Visit.Status.WAITING_STAFF);
+        return finish(previous, Visit.Status.CLOSED);
+    }
+
+    @Transactional
+    public VisitDetail left(long id, long expectedVersion) {
+        Visit previous = requireVersion(id, expectedVersion);
+        if (previous.status() == Visit.Status.CLOSED || previous.status() == Visit.Status.LEFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A completed visit cannot be marked left.");
+        }
+        return finish(previous, Visit.Status.LEFT);
+    }
+
+    @Transactional
+    public VisitDetail assign(long id, long expectedVersion) {
+        Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_RESOURCE);
+        Resource resource = resources.assignLowestFree(previous.requiredResourceType())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No matching resource is free. Refresh the inventory before trying again."));
+        return describe(transition(previous, Visit.Status.AT_RESOURCE, previous.customerId(), resource.id()));
+    }
+
+    private VisitDetail finish(Visit previous, Visit.Status next) {
+        // Resource rows are locked before the visit update, matching assignment
+        // lock order. An optimistic conflict or event failure rolls back both.
+        if (previous.resourceId() != null) resources.release(previous.resourceId());
+        return describe(transition(previous, next, previous.customerId(), previous.resourceId()));
     }
 
     private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId) {
@@ -81,13 +107,18 @@ public class VisitService {
         return updated;
     }
 
-    private Visit requireStatus(long id, long expectedVersion, Visit.Status status) {
+    private Visit requireStatus(long id, long expectedVersion, Visit.Status... allowed) {
+        Visit visit = requireVersion(id, expectedVersion);
+        if (Arrays.stream(allowed).noneMatch(status -> visit.status() == status)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This action requires " + Arrays.toString(allowed) + ". Reload the visit to see its current status.");
+        }
+        return visit;
+    }
+
+    private Visit requireVersion(long id, long expectedVersion) {
         Visit visit = findVisit(id);
         if (visit.version() != expectedVersion) throw staleVersion();
-        if (visit.status() != status) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "This action requires " + status + ". Reload the visit to see its current status.");
-        }
         return visit;
     }
 
@@ -104,16 +135,7 @@ public class VisitService {
     private VisitDetail describe(Visit visit) {
         Customer customer = visit.customerId() == null ? null : customers.findById(visit.customerId()).orElse(null);
         Resource resource = visit.resourceId() == null ? null : resources.findById(visit.resourceId()).orElse(null);
-        return new VisitDetail(visit, repository.findEvents(visit.id()), customer, resource, requiredResourceType(visit));
-    }
-
-    private Resource.Type requiredResourceType(Visit visit) {
-        if (visit.visitType() == Visit.VisitType.APPOINTMENT) return null;
-        return switch (visit.reason()) {
-            case PHONE_ACCESS -> Resource.Type.PHONE;
-            case COMPUTER_ACCESS, JOB_SEARCH -> Resource.Type.COMPUTER;
-            case DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, OTHER -> Resource.Type.STATION;
-        };
+        return new VisitDetail(visit, repository.findEvents(visit.id()), customer, resource, visit.requiredResourceType());
     }
 
     public record VisitDetail(

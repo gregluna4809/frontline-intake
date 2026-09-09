@@ -16,6 +16,14 @@ public record Visit(
         long version
 ) {
     public enum VisitType { WALK_IN, APPOINTMENT }
+    public Resource.Type requiredResourceType() {
+        if (visitType == VisitType.APPOINTMENT) return null;
+        return switch (reason) {
+            case PHONE_ACCESS -> Resource.Type.PHONE;
+            case COMPUTER_ACCESS, JOB_SEARCH -> Resource.Type.COMPUTER;
+            case DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, OTHER -> Resource.Type.STATION;
+        };
+    }
     public enum AppointmentCategory { REEMPLOYMENT, CAREER_SERVICES, VETERANS }
     public enum Reason {
         PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES,

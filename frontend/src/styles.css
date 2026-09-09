@@ -82,8 +82,35 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .routing-result { padding: 16px; background: #eaf3e1; color: #36562d; border-radius: 8px; line-height: 1.5; }
 .ticket-link { border: 0; background: none; padding: 5px 0; color: #1c5546; text-decoration: underline; letter-spacing: .5px; }
 .selected-row { background: #f0f5ef; }
+.resource-room-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(270px, 1fr); gap: 24px; align-items: start; }
+.resource-group { margin-bottom: 28px; }
+.resource-group > h2 { margin-bottom: 14px; font-size: 18px; }
+.resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.resource-tile { background: #fff; border: 1px solid #d4dfd8; border-radius: 12px; padding: 18px; min-width: 0; }
+.resource-tile.occupied { border-color: #9bb6a9; }
+.resource-tile.overdue { border: 2px solid #a76a0b; background: #fff8e9; }
+.tile-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tile-heading h3, .waiting-resource-card h3 { font-size: 15px; margin: 0; }
+.resource-status { font-size: 10px; font-weight: 700; letter-spacing: .5px; padding: 5px 7px; border-radius: 5px; }
+.resource-status.free { background: #edf4ee; color: #37543d; }
+.resource-status.occupied { background: #e3ece7; color: #214c3c; }
+.tile-ticket { font-weight: 700; font-size: 22px; margin: 18px 0 8px; letter-spacing: .5px; }
+.tile-customer { font-size: 13px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.tile-time { font-size: 12px; color: #5d7165; }
+.overdue-label { font-size: 12px; color: #875500; font-weight: 700; }
+.resource-available { font-size: 13px; color: #6a7f70; padding: 16px 0; }
+.tile-actions { display: flex; gap: 8px; margin-top: 16px; }
+.tile-actions button { flex: 1; padding: 10px; font-size: 13px; }
+.resource-waiting { border: 1px solid #d4dfd8; border-radius: 12px; background: #fff; overflow: hidden; }
+.resource-waiting .queue-heading { padding: 18px; }
+.waiting-resource-list { padding: 0; margin: 0; list-style: none; }
+.waiting-resource-card { padding: 20px; border-bottom: 1px solid #e5ebe7; }
+.waiting-resource-list li:last-child .waiting-resource-card { border-bottom: 0; }
+.waiting-resource-card p { font-size: 13px; line-height: 1.5; }
+.no-resource { color: #875500; font-size: 12px; }
 @media (max-width: 950px) {
   .desk-layout.with-panel { grid-template-columns: 1fr; }
+  .resource-room-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 650px) {
   .topbar { padding: 18px; align-items: flex-start; }
@@ -91,6 +118,7 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
   select { max-width: 155px; font-size: 12px; }
   main { padding-top: 36px; }
   .reason-grid { grid-template-columns: 1fr; }
+  .resource-grid { grid-template-columns: 1fr; }
   .reason { min-height: 78px; padding: 20px; }
   .form-footer, .section-heading { flex-direction: column; align-items: stretch; }
   .section-heading { margin-bottom: 22px; }

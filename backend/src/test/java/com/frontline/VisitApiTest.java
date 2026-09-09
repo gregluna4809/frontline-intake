@@ -342,6 +342,233 @@ class VisitApiTest {
                 .isEqualTo(1);
     }
 
+
+    @Test
+    void closeFreesResourceAndInventoryShowsOnlyCurrentOccupant() throws Exception {
+        Visit visit = atResource(Visit.Reason.PHONE_ACCESS);
+        mvc.perform(get("/api/resources"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(16))
+                .andExpect(jsonPath("$[?(@.label == 'Phone 01')].ticket")
+                        .value(org.hamcrest.Matchers.contains(visit.ticket())))
+                .andExpect(jsonPath("$[?(@.label == 'Phone 01')].customer.displayName")
+                        .value(org.hamcrest.Matchers.contains("Demo Customer 001")));
+        mvc.perform(post("/api/visits/{id}/close", visit.id()).header("If-Match", "\"2\""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visit.status").value("CLOSED"))
+                .andExpect(jsonPath("$.visit.closedAt").isNotEmpty())
+                .andExpect(jsonPath("$.visit.resourceId").value(visit.resourceId()))
+                .andExpect(jsonPath("$.events[3].actor").value("RESOURCE_ROOM"));
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, visit.resourceId()))
+                .isEqualTo("FREE");
+        mvc.perform(get("/api/resources"))
+                .andExpect(jsonPath("$[?(@.label == 'Phone 01')].ticket")
+                        .value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())));
+        Visit next = atResource(Visit.Reason.PHONE_ACCESS);
+        assertThat(next.resourceId()).isEqualTo(visit.resourceId());
+        mvc.perform(get("/api/resources"))
+                .andExpect(jsonPath("$[?(@.label == 'Phone 01')].ticket")
+                        .value(org.hamcrest.Matchers.contains(next.ticket())));
+    }
+
+    @Test
+    void closeFromWrongStatusAndStaleCloseDoNotReleaseAnything() throws Exception {
+        Visit checkedIn = service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.PHONE_ACCESS, null);
+        mvc.perform(post("/api/visits/{id}/close", checkedIn.id()).header("If-Match", "\"0\""))
+                .andExpect(status().isConflict());
+        Visit occupied = atResource(Visit.Reason.PHONE_ACCESS);
+        mvc.perform(post("/api/visits/{id}/close", occupied.id()).header("If-Match", "\"1\""))
+                .andExpect(status().isPreconditionFailed());
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, occupied.resourceId()))
+                .isEqualTo("OCCUPIED");
+        assertThat(service.detail(occupied.id()).events()).hasSize(3);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"CHECKED_IN", "IDENTIFIED", "AT_RESOURCE", "WAITING_RESOURCE", "WAITING_STAFF"})
+    void leftAcceptsEveryActiveStatusAndFreesResourceWhenPresent(Visit.Status from) throws Exception {
+        Visit visit;
+        if (from == Visit.Status.WAITING_STAFF) {
+            visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT);
+            service.identify(visit.id(), 1, 0);
+            visit = service.route(visit.id(), 1).visit();
+        } else {
+            visit = service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.PHONE_ACCESS, null);
+            if (from != Visit.Status.CHECKED_IN) visit = service.identify(visit.id(), 1, 0).visit();
+            if (from == Visit.Status.WAITING_RESOURCE) {
+                jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE'");
+            }
+            if (from == Visit.Status.AT_RESOURCE || from == Visit.Status.WAITING_RESOURCE) {
+                visit = service.route(visit.id(), 1).visit();
+            }
+        }
+        mvc.perform(post("/api/visits/{id}/left", visit.id()).header("If-Match", "\"" + visit.version() + "\""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visit.status").value("LEFT"))
+                .andExpect(jsonPath("$.visit.closedAt").isNotEmpty())
+                .andExpect(jsonPath("$.visit.version").value(visit.version() + 1));
+        var events = service.detail(visit.id()).events();
+        assertThat(events.getLast().fromStatus()).isEqualTo(from);
+        assertThat(events.getLast().toStatus()).isEqualTo(Visit.Status.LEFT);
+        if (visit.resourceId() != null) {
+            assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, visit.resourceId()))
+                    .isEqualTo("FREE");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"CLOSED", "LEFT"})
+    void leftRejectsCompletedVisitAndCannotFreeAReusedResource(Visit.Status terminal) throws Exception {
+        Visit old = atResource(Visit.Reason.PHONE_ACCESS);
+        if (terminal == Visit.Status.CLOSED) service.close(old.id(), 2);
+        else service.left(old.id(), 2);
+        Visit current = atResource(Visit.Reason.PHONE_ACCESS);
+        mvc.perform(post("/api/visits/{id}/left", old.id()).header("If-Match", "\"3\""))
+                .andExpect(status().isConflict());
+        assertThat(current.resourceId()).isEqualTo(old.resourceId());
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, current.resourceId()))
+                .isEqualTo("OCCUPIED");
+    }
+
+    @Test
+    void assignUsesFreedLowestLabelAndPreservesReasonAndCustomer() throws Exception {
+        List<Visit> occupied = new ArrayList<>();
+        for (int i = 0; i < 6; i++) occupied.add(atResource(Visit.Reason.PHONE_ACCESS));
+        Visit waiting = atResource(Visit.Reason.PHONE_ACCESS);
+        assertThat(waiting.status()).isEqualTo(Visit.Status.WAITING_RESOURCE);
+        mvc.perform(get("/api/visits").param("status", "WAITING_RESOURCE"))
+                .andExpect(jsonPath("$[0].requiredResourceType").value("PHONE"))
+                .andExpect(jsonPath("$[0].customer.displayName").value("Demo Customer 001"))
+                .andExpect(jsonPath("$[0].waitingSince").isNotEmpty());
+        service.close(occupied.get(1).id(), 2);
+        service.close(occupied.get(0).id(), 2);
+        mvc.perform(post("/api/visits/{id}/assign", waiting.id()).header("If-Match", "\"2\""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visit.status").value("AT_RESOURCE"))
+                .andExpect(jsonPath("$.visit.version").value(3))
+                .andExpect(jsonPath("$.visit.reason").value("PHONE_ACCESS"))
+                .andExpect(jsonPath("$.customer.displayName").value("Demo Customer 001"))
+                .andExpect(jsonPath("$.resource.label").value("Phone 01"))
+                .andExpect(jsonPath("$.resource.status").value("OCCUPIED"))
+                .andExpect(jsonPath("$.events[3].fromStatus").value("WAITING_RESOURCE"))
+                .andExpect(jsonPath("$.events[3].actor").value("RESOURCE_ROOM"));
+        mvc.perform(get("/api/visits").param("status", "WAITING_RESOURCE")).andExpect(content().json("[]"));
+    }
+
+    @Test
+    void assignWithNoFreeResourceReturnsConflictWithoutEventOrVersionChange() throws Exception {
+        jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'STATION'");
+        Visit waiting = atResource(Visit.Reason.DOCUMENT_SERVICES);
+        mvc.perform(post("/api/visits/{id}/assign", waiting.id()).header("If-Match", "\"2\""))
+                .andExpect(status().isConflict());
+        var detail = service.detail(waiting.id());
+        assertThat(detail.visit().status()).isEqualTo(Visit.Status.WAITING_RESOURCE);
+        assertThat(detail.visit().version()).isEqualTo(2);
+        assertThat(detail.events()).hasSize(3);
+    }
+
+    @Test
+    void assignRejectsWrongStatusAndStaleVersion() throws Exception {
+        Visit checkedIn = service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.PHONE_ACCESS, null);
+        mvc.perform(post("/api/visits/{id}/assign", checkedIn.id()).header("If-Match", "\"0\""))
+                .andExpect(status().isConflict());
+        jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE'");
+        Visit waiting = atResource(Visit.Reason.PHONE_ACCESS);
+        jdbc.update("UPDATE resource SET status = 'FREE' WHERE label = 'Phone 01'");
+        mvc.perform(post("/api/visits/{id}/assign", waiting.id()).header("If-Match", "\"1\""))
+                .andExpect(status().isPreconditionFailed());
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE label = 'Phone 01'", String.class))
+                .isEqualTo("FREE");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"close", "left"})
+    void failedTerminalEventRollsBackReleaseAndClosedAt(String action) {
+        Visit visit = atResource(Visit.Reason.COMPUTER_ACCESS);
+        doThrow(new IllegalStateException("Simulated terminal event failure"))
+                .when(repository).recordTransition(any(), any());
+        assertThatThrownBy(() -> {
+            if (action.equals("close")) service.close(visit.id(), 2);
+            else service.left(visit.id(), 2);
+        }).isInstanceOf(IllegalStateException.class);
+        var detail = service.detail(visit.id());
+        assertThat(detail.visit().status()).isEqualTo(Visit.Status.AT_RESOURCE);
+        assertThat(detail.visit().version()).isEqualTo(2);
+        assertThat(detail.visit().closedAt()).isNull();
+        assertThat(detail.events()).hasSize(3);
+        assertThat(detail.resource().status()).isEqualTo(Resource.Status.OCCUPIED);
+    }
+
+    @Test
+    void failedAssignEventRollsBackResourceReservation() {
+        jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE'");
+        Visit visit = atResource(Visit.Reason.PHONE_ACCESS);
+        jdbc.update("UPDATE resource SET status = 'FREE' WHERE label = 'Phone 01'");
+        doThrow(new IllegalStateException("Simulated assign event failure"))
+                .when(repository).recordTransition(any(), any());
+        assertThatThrownBy(() -> service.assign(visit.id(), 2)).isInstanceOf(IllegalStateException.class);
+        assertThat(service.detail(visit.id()).visit().status()).isEqualTo(Visit.Status.WAITING_RESOURCE);
+        assertThat(service.detail(visit.id()).events()).hasSize(3);
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE label = 'Phone 01'", String.class))
+                .isEqualTo("FREE");
+    }
+
+    @Test
+    void concurrentCloseAndLeftFinishExactlyOnce() throws Exception {
+        Visit visit = atResource(Visit.Reason.PHONE_ACCESS);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var results = executor.invokeAll(List.<Callable<Integer>>of(
+                    () -> terminalResult(visit.id(), true), () -> terminalResult(visit.id(), false)));
+            assertThat(List.of(results.get(0).get(), results.get(1).get()))
+                    .containsExactlyInAnyOrder(200, 412);
+        }
+        assertThat(service.detail(visit.id()).events()).hasSize(4);
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, visit.resourceId()))
+                .isEqualTo("FREE");
+    }
+
+    @Test
+    void competingWaitingVisitsCannotShareLastFreeResource() throws Exception {
+        jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE'");
+        Visit first = atResource(Visit.Reason.PHONE_ACCESS);
+        Visit second = atResource(Visit.Reason.PHONE_ACCESS);
+        jdbc.update("UPDATE resource SET status = 'FREE' WHERE label = 'Phone 01'");
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var results = executor.invokeAll(List.<Callable<Integer>>of(
+                    () -> assignResult(first.id()), () -> assignResult(second.id())));
+            assertThat(List.of(results.get(0).get(), results.get(1).get()))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM visit WHERE status = 'AT_RESOURCE'", Integer.class))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM visit WHERE status = 'WAITING_RESOURCE'", Integer.class))
+                .isEqualTo(1);
+    }
+
+    private int terminalResult(long id, boolean close) {
+        try {
+            if (close) service.close(id, 2);
+            else service.left(id, 2);
+            return 200;
+        } catch (ResponseStatusException exception) {
+            return exception.getStatusCode().value();
+        }
+    }
+
+    private int assignResult(long id) {
+        try {
+            service.assign(id, 2);
+            return 200;
+        } catch (ResponseStatusException exception) {
+            return exception.getStatusCode().value();
+        }
+    }
+
+    private Visit atResource(Visit.Reason reason) {
+        Visit identified = identified(reason);
+        return service.route(identified.id(), 1).visit();
+    }
+
     private Visit identified(Visit.Reason reason) {
         Visit visit = service.checkIn(Visit.VisitType.WALK_IN, reason, null);
         return service.identify(visit.id(), 1, 0).visit();
