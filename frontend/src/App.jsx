@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { reasons, reasonLabel, appointmentCategories, appointmentCategoryLabel, request } from './api.js';
-import Appointments from './Appointments.jsx';
+import Supervisor from './Supervisor.jsx';
+import MyQueue from './MyQueue.jsx';
+import RoleSelector from './RoleSelector.jsx';
 import ResourceRoom from './ResourceRoom.jsx';
 import FrontDesk from './FrontDesk.jsx';
 import SimulatorControl from './SimulatorControl.jsx';
@@ -110,9 +112,30 @@ function Kiosk() {
 }
 
 export default function App() {
-  const path = window.location.pathname;
-  const role = path === '/' ? 'kiosk' : path.slice(1);
-  const screens = { kiosk: <Kiosk />, 'front-desk': <FrontDesk />, appointments: <Appointments />, 'resource-room': <ResourceRoom /> };
+  const [location, setLocation] = useState(() => window.location.pathname + window.location.search);
+  useEffect(() => {
+    function syncLocation() { setLocation(window.location.pathname + window.location.search); }
+    window.addEventListener('popstate', syncLocation);
+    return () => window.removeEventListener('popstate', syncLocation);
+  }, []);
+  const url = new URL(location, window.location.origin);
+  const legacyAppointments = url.pathname === '/appointments';
+  useEffect(() => {
+    if (legacyAppointments) {
+      window.history.replaceState({}, '', '/supervisor');
+      setLocation('/supervisor');
+    }
+  }, [legacyAppointments]);
+  const role = legacyAppointments ? 'supervisor' : url.pathname === '/' ? 'kiosk' : url.pathname.slice(1);
+  const staffId = url.searchParams.get('staff') || '';
+  function navigate(path) {
+    window.history.pushState({}, '', path);
+    setLocation(path);
+  }
+  const screens = {
+    kiosk: <Kiosk />, 'front-desk': <FrontDesk />, supervisor: <Supervisor />,
+    'my-queue': <MyQueue key={staffId} staffId={staffId} />, 'resource-room': <ResourceRoom />,
+  };
   const supported = Object.hasOwn(screens, role);
 
   return (
@@ -121,16 +144,7 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="/kiosk"><span className="brand-mark">F</span><span>Frontline<small>Career Center</small></span></a>
         <SimulatorControl />
-        <label className="role-switcher">
-          <span>View as</span>
-          <select aria-label="Role" value={supported ? role : ''} onChange={event => { window.location.href = '/' + event.target.value; }}>
-            {!supported && <option value="" disabled>Select role</option>}
-            <option value="kiosk">Kiosk</option>
-            <option value="front-desk">Front desk</option>
-            <option value="appointments">Appointments</option>
-            <option value="resource-room">Resource room</option>
-          </select>
-        </label>
+        <RoleSelector role={role} staffId={staffId} onNavigate={navigate} />
       </header>
       <main>
         {!supported ? <section><h1>Page not available</h1><a href="/kiosk">Return to kiosk</a></section> :

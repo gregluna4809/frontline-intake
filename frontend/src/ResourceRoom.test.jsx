@@ -69,7 +69,8 @@ function mockRoom({ conflict = false } = {}) {
       : resource);
     return ok({});
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', (path, options) => path === '/api/staff'
+    ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   return { state, fetchMock };
 }
 

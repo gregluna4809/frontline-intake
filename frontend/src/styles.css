@@ -136,3 +136,9 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .simulator-error { flex-basis: 100%; color: #8b3328; max-width: 280px; }
 
 .appointment-type { margin-top: 26px; }
+
+.supervisor-groups { display: grid; gap: 24px; }
+.staff-assignment { display: flex; align-items: center; gap: 10px; }
+.staff-assignment select { max-width: 200px; }
+.staff-assignment button { padding: 10px 14px; }
+.staff-views-error { color: #8b3328; max-width: 180px; }

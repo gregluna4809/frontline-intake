@@ -37,3 +37,14 @@ export const appointmentCategories = [
 export function appointmentCategoryLabel(value) {
   return appointmentCategories.find(([code]) => code === value)?.[1] || value;
 }
+
+export function appointmentTypeLabel(value) {
+  return { INITIAL: 'Initial', FOLLOWUP: 'Follow-up' }[value] || value || '—';
+}
+
+export function appointmentStatusLabel(value) {
+  return {
+    SCHEDULED: 'Scheduled', RESCHEDULED: 'Rescheduled',
+    NOT_ATTENDED_FTR: 'Not attended / FTR', FTR_REPORTED: 'FTR reported',
+  }[value] || value || '—';
+}
