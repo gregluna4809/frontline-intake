@@ -8,6 +8,9 @@ public record Visit(
         VisitType visitType,
         Reason reason,
         String appointmentCategory,
+        AppointmentType appointmentType,
+        AppointmentStatus appointmentStatus,
+        Long assignedStaffId,
         Status status,
         Long customerId,
         Long resourceId,
@@ -24,6 +27,8 @@ public record Visit(
             case DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, OTHER -> Resource.Type.STATION;
         };
     }
+    public enum AppointmentType { INITIAL, FOLLOWUP }
+    public enum AppointmentStatus { SCHEDULED, RESCHEDULED, NOT_ATTENDED_FTR, FTR_REPORTED }
     public enum AppointmentCategory { REEMPLOYMENT, CAREER_SERVICES, VETERANS }
     public enum Reason {
         PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES,

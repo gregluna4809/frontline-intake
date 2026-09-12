@@ -239,7 +239,8 @@ class VisitApiTest {
         Visit visit = service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.OTHER, null);
         jdbc.update("""
                 UPDATE visit SET visit_type = 'APPOINTMENT', reason = NULL,
-                    appointment_category = 'Reemployment Appointment' WHERE id = ?
+                    appointment_category = 'Reemployment Appointment', appointment_type = 'INITIAL',
+                    appointment_status = 'SCHEDULED' WHERE id = ?
                 """, visit.id());
         service.identify(visit.id(), 1, 0);
         mvc.perform(post("/api/visits/{id}/route", visit.id()).header("If-Match", "\"1\""))
@@ -389,7 +390,7 @@ class VisitApiTest {
     void leftAcceptsEveryActiveStatusAndFreesResourceWhenPresent(Visit.Status from) throws Exception {
         Visit visit;
         if (from == Visit.Status.WAITING_STAFF) {
-            visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT);
+            visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.INITIAL);
             service.identify(visit.id(), 1, 0);
             visit = service.route(visit.id(), 1).visit();
         } else {
@@ -591,7 +592,7 @@ class VisitApiTest {
         service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.PHONE_ACCESS, null);
         mvc.perform(post("/api/visits").contentType("application/json")
                         .content("""
-                                {"visitType":"APPOINTMENT","appointmentCategory":"%s"}
+                                {"visitType":"APPOINTMENT","appointmentType":"INITIAL","appointmentCategory":"%s"}
                                 """.formatted(category)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.ticket").value("A0001"))
@@ -599,7 +600,7 @@ class VisitApiTest {
                 .andExpect(jsonPath("$.appointmentCategory").value(category))
                 .andExpect(jsonPath("$.reason").isEmpty())
                 .andExpect(jsonPath("$.status").value("CHECKED_IN"));
-        Visit second = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT);
+        Visit second = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.INITIAL);
         assertThat(second.ticket()).isEqualTo("A0002");
         assertThat(service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.OTHER, null).ticket()).isEqualTo("B0003");
         var event = service.detail(second.id()).events().getFirst();
@@ -615,13 +616,13 @@ class VisitApiTest {
                 {"visitType":"WALK_IN","reason":"PHONE_ACCESS","appointmentCategory":"REEMPLOYMENT"}
                 """,
                 """
-                {"visitType":"APPOINTMENT","reason":"PHONE_ACCESS","appointmentCategory":"REEMPLOYMENT"}
+                {"visitType":"APPOINTMENT","appointmentType":"INITIAL","reason":"PHONE_ACCESS","appointmentCategory":"REEMPLOYMENT"}
                 """,
                 """
                 {"visitType":"WALK_IN","appointmentCategory":"REEMPLOYMENT"}
                 """,
                 """
-                {"visitType":"APPOINTMENT","reason":"PHONE_ACCESS"}
+                {"visitType":"APPOINTMENT","appointmentType":"INITIAL","reason":"PHONE_ACCESS"}
                 """,
                 """
                 {"visitType":"WALK_IN"}
@@ -633,10 +634,10 @@ class VisitApiTest {
                 {"reason":"PHONE_ACCESS"}
                 """,
                 """
-                {"visitType":"APPOINTMENT","appointmentCategory":"INVALID"}
+                {"visitType":"APPOINTMENT","appointmentType":"INITIAL","appointmentCategory":"INVALID"}
                 """,
                 """
-                {"visitType":"APPOINTMENT","appointmentCategory":""}
+                {"visitType":"APPOINTMENT","appointmentType":"INITIAL","appointmentCategory":""}
                 """
         }) {
             mvc.perform(post("/api/visits").contentType("application/json").content(body))
@@ -648,7 +649,7 @@ class VisitApiTest {
 
     @Test
     void appointmentsQueueIncludesCustomerAndTimeEnteredWaitingStaffThenCloses() throws Exception {
-        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.CAREER_SERVICES);
+        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.CAREER_SERVICES, Visit.AppointmentType.INITIAL);
         jdbc.update("UPDATE visit SET created_at = CURRENT_TIMESTAMP - interval '2 hours' WHERE id = ?", visit.id());
         service.identify(visit.id(), 1, 0);
         var routed = service.route(visit.id(), 1);
@@ -675,7 +676,7 @@ class VisitApiTest {
 
     @Test
     void appointmentCloseRejectsWrongStatusAndStaleVersion() throws Exception {
-        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.VETERANS);
+        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.VETERANS, Visit.AppointmentType.INITIAL);
         mvc.perform(post("/api/visits/{id}/close", visit.id()).header("If-Match", "\"0\""))
                 .andExpect(status().isConflict());
         service.identify(visit.id(), 1, 0);
@@ -691,7 +692,7 @@ class VisitApiTest {
 
     @Test
     void failedAppointmentCloseEventRollsBackClosedAtAndVersion() {
-        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT);
+        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null, Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.INITIAL);
         service.identify(visit.id(), 1, 0);
         service.route(visit.id(), 1);
         doThrow(new IllegalStateException("Simulated close event failure"))
@@ -703,4 +704,201 @@ class VisitApiTest {
         assertThat(detail.visit().version()).isEqualTo(2);
         assertThat(detail.events()).hasSize(3);
     }
+    @Test
+    void staffMigrationSeedsRolesAndEndpointListsInOrder() throws Exception {
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'LSR'", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'SUPERVISING_LSR'", Integer.class)).isEqualTo(1);
+        mvc.perform(get("/api/staff")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$[0].displayName").value("Demo Staff 001"))
+                .andExpect(jsonPath("$[3].displayName").value("Demo Staff 004"))
+                .andExpect(jsonPath("$[4].role").value("SUPERVISING_LSR"))
+                .andExpect(jsonPath("$[4].displayName").value("Demo Supervisor 001"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"INITIAL", "FOLLOWUP"})
+    void appointmentCheckInPersistsClassificationAndServerStatus(Visit.AppointmentType type) throws Exception {
+        mvc.perform(post("/api/visits").contentType("application/json")
+                        .content("""
+                                {"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":"%s"}
+                                """.formatted(type)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.appointmentType").value(type.name()))
+                .andExpect(jsonPath("$.appointmentStatus").value("SCHEDULED"))
+                .andExpect(jsonPath("$.assignedStaffId").isEmpty());
+        mvc.perform(get("/api/visits")).andExpect(jsonPath("$[0].appointmentType").value(type.name()))
+                .andExpect(jsonPath("$[0].appointmentStatus").value("SCHEDULED"))
+                .andExpect(jsonPath("$[0].assignedStaffId").isEmpty());
+    }
+
+    @Test
+    void invalidAppointmentClassificationAndClientStatusAreRejectedWithoutWriting() throws Exception {
+        for (String body : new String[] {
+                """
+                {"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT"}
+                """,
+                """
+                {"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":null}
+                """,
+                """
+                {"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":"INVALID"}
+                """,
+                """
+                {"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":0}
+                """,
+                """
+                {"visitType":"WALK_IN","reason":"OTHER","appointmentType":"INITIAL"}
+                """,
+                """
+                {"visitType":"WALK_IN","reason":"OTHER","appointmentType":"FOLLOWUP"}
+                """,
+                """
+                {"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":"INITIAL","appointmentStatus":"SCHEDULED"}
+                """
+        }) {
+            mvc.perform(post("/api/visits").contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM visit", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM visit_event", Integer.class)).isZero();
+        mvc.perform(post("/api/visits").contentType("application/json")
+                        .content("""
+                                {"visitType":"WALK_IN","reason":"OTHER","appointmentType":null}
+                                """))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.appointmentType").isEmpty())
+                .andExpect(jsonPath("$.appointmentStatus").isEmpty());
+    }
+
+    @Test
+    void databaseEnforcesAppointmentTypeNullabilityAndAllowedValues() {
+        Visit walkIn = service.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.OTHER, null);
+        assertThatThrownBy(() -> jdbc.update("UPDATE visit SET appointment_type = 'INITIAL' WHERE id = ?", walkIn.id()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        Visit appointment = service.checkIn(Visit.VisitType.APPOINTMENT, null,
+                Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.INITIAL);
+        assertThatThrownBy(() -> jdbc.update("UPDATE visit SET appointment_type = NULL WHERE id = ?", appointment.id()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("UPDATE visit SET appointment_type = 'INVALID' WHERE id = ?", appointment.id()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("UPDATE visit SET appointment_status = 'INVALID' WHERE id = ?", appointment.id()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void staffAssignmentAndReassignmentRecordEventsAndPreserveWaitingTime() throws Exception {
+        Visit visit = waitingStaff();
+        var waitingSince = service.list(Visit.Status.WAITING_STAFF).getFirst().waitingSince();
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"2\"")
+                        .contentType("application/json").content("{\"staffId\":1}"))
+                .andExpect(status().isOk()).andExpect(header().string("ETag", "\"3\""))
+                .andExpect(jsonPath("$.visit.status").value("WAITING_STAFF"))
+                .andExpect(jsonPath("$.visit.assignedStaffId").value(1))
+                .andExpect(jsonPath("$.events[3].fromStatus").value("WAITING_STAFF"))
+                .andExpect(jsonPath("$.events[3].toStatus").value("WAITING_STAFF"))
+                .andExpect(jsonPath("$.events[3].actor").value("APPOINTMENTS"))
+                .andExpect(jsonPath("$.events[3].note").value("Assigned staff ID: 1."));
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"3\"")
+                        .contentType("application/json").content("{\"staffId\":2}"))
+                .andExpect(status().isOk()).andExpect(header().string("ETag", "\"4\""))
+                .andExpect(jsonPath("$.visit.assignedStaffId").value(2))
+                .andExpect(jsonPath("$.events[4].note").value("Reassigned staff from ID: 1 to ID: 2."));
+        mvc.perform(get("/api/visits").param("status", "WAITING_STAFF"))
+                .andExpect(jsonPath("$[0].assignedStaffId").value(2))
+                .andExpect(jsonPath("$[0].appointmentType").value("FOLLOWUP"))
+                .andExpect(jsonPath("$[0].appointmentStatus").value("SCHEDULED"));
+        assertThat(service.list(Visit.Status.WAITING_STAFF).getFirst().waitingSince()).isEqualTo(waitingSince);
+        service.close(visit.id(), 4);
+        assertThat(service.detail(visit.id()).visit().assignedStaffId()).isEqualTo(2);
+    }
+
+    @Test
+    void staffAssignmentRequiresVersionValidStaffAndBody() throws Exception {
+        Visit visit = waitingStaff();
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id())
+                        .contentType("application/json").content("{\"staffId\":1}"))
+                .andExpect(status().is(428));
+        for (String version : new String[] {"*", "2", "\"-1\"", "\"9223372036854775808\""}) {
+            mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", version)
+                            .contentType("application/json").content("{\"staffId\":1}"))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"1\"")
+                        .contentType("application/json").content("{\"staffId\":1}"))
+                .andExpect(status().isPreconditionFailed());
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"2\"")
+                        .contentType("application/json").content("{\"staffId\":9999}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/visits/9999/assign-staff").header("If-Match", "\"2\"")
+                        .contentType("application/json").content("{\"staffId\":1}"))
+                .andExpect(status().isNotFound());
+        for (String body : new String[] {"{}", "{\"staffId\":null}", "{\"staffId\":0}", "{\"staffId\":-1}"}) {
+            mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"2\"")
+                            .contentType("application/json").content(body)).andExpect(status().isBadRequest());
+        }
+        assertThat(service.detail(visit.id()).visit().assignedStaffId()).isNull();
+        assertThat(service.detail(visit.id()).visit().version()).isEqualTo(2);
+        assertThat(service.detail(visit.id()).events()).hasSize(3);
+        service.assignStaff(visit.id(), 1, 2);
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"2\"")
+                        .contentType("application/json").content("{\"staffId\":2}"))
+                .andExpect(status().isPreconditionFailed());
+        assertThat(service.detail(visit.id()).visit().assignedStaffId()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"CHECKED_IN", "IDENTIFIED", "AT_RESOURCE", "WAITING_RESOURCE", "CLOSED", "LEFT"})
+    void staffAssignmentRejectsEveryOtherState(Visit.Status status) throws Exception {
+        Visit visit = waitingStaff();
+        jdbc.update("UPDATE visit SET status = ? WHERE id = ?", status.name(), visit.id());
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id()).header("If-Match", "\"2\"")
+                        .contentType("application/json").content("{\"staffId\":1}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict());
+        assertThat(service.detail(visit.id()).visit().version()).isEqualTo(2);
+        assertThat(service.detail(visit.id()).events()).hasSize(3);
+    }
+
+    @Test
+    void failedStaffAssignmentEventRollsBackStaffAndVersion() {
+        Visit visit = waitingStaff();
+        service.assignStaff(visit.id(), 1, 2);
+        doThrow(new IllegalStateException("Simulated staff event failure"))
+                .when(repository).recordTransition(any(), any());
+        assertThatThrownBy(() -> service.assignStaff(visit.id(), 2, 3)).isInstanceOf(IllegalStateException.class);
+        assertThat(service.detail(visit.id()).visit().assignedStaffId()).isEqualTo(1);
+        assertThat(service.detail(visit.id()).visit().version()).isEqualTo(3);
+        assertThat(service.detail(visit.id()).events()).hasSize(4);
+    }
+
+    private Visit waitingStaff() {
+        Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null,
+                Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.FOLLOWUP);
+        service.identify(visit.id(), 1, 0);
+        return service.route(visit.id(), 1).visit();
+    }
+
+    @Test
+    void migrationBackfillsExistingAppointmentsAndPreservesWalkIns() {
+        String schema = "step5_upgrade";
+        org.flywaydb.core.Flyway.configure()
+                .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .schemas(schema).defaultSchema(schema).target("4").load().migrate();
+        jdbc.update("""
+                INSERT INTO step5_upgrade.visit (ticket, visit_type, reason, appointment_category, status, created_at)
+                VALUES ('A0001', 'APPOINTMENT', NULL, 'REEMPLOYMENT', 'WAITING_STAFF', CURRENT_TIMESTAMP),
+                       ('B0001', 'WALK_IN', 'OTHER', NULL, 'CHECKED_IN', CURRENT_TIMESTAMP)
+                """);
+        org.flywaydb.core.Flyway.configure()
+                .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(jdbc.queryForObject("SELECT appointment_type FROM step5_upgrade.visit WHERE ticket = 'A0001'", String.class))
+                .isEqualTo("INITIAL");
+        assertThat(jdbc.queryForObject("SELECT appointment_status FROM step5_upgrade.visit WHERE ticket = 'A0001'", String.class))
+                .isEqualTo("SCHEDULED");
+        assertThat(jdbc.queryForObject("SELECT appointment_type FROM step5_upgrade.visit WHERE ticket = 'B0001'", String.class))
+                .isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM step5_upgrade.staff", Integer.class)).isEqualTo(5);
+    }
+
 }

@@ -134,3 +134,5 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .simulator-dot.running { background: #25804e; }
 .simulator-rate { color: #60716b; white-space: nowrap; }
 .simulator-error { flex-basis: 100%; color: #8b3328; max-width: 280px; }
+
+.appointment-type { margin-top: 26px; }

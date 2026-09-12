@@ -22,7 +22,7 @@ public class VisitController {
 
     @PostMapping
     public ResponseEntity<Visit> create(@Valid @RequestBody CheckInRequest request) {
-        Visit visit = service.checkIn(request.visitType(), request.reason(), request.appointmentCategory());
+        Visit visit = service.checkIn(request.visitType(), request.reason(), request.appointmentCategory(), request.appointmentType());
         return ResponseEntity.created(URI.create("/api/visits/" + visit.id()))
                 .eTag(Long.toString(visit.version())).body(visit);
     }
@@ -94,7 +94,17 @@ public class VisitController {
     }
 
     public record CheckInRequest(
-            @NotNull Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory
+            @NotNull Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory,
+            Visit.AppointmentType appointmentType
     ) {}
+    @PostMapping("/{id}/assign-staff")
+    public ResponseEntity<VisitService.VisitDetail> assignStaff(
+            @PathVariable long id,
+            @Valid @RequestBody AssignStaffRequest request,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        return response(service.assignStaff(id, request.staffId(), expectedVersion(version)));
+    }
+
+    public record AssignStaffRequest(@NotNull @Positive Long staffId) {}
     public record IdentifyRequest(@NotNull @Positive Long customerId) {}
 }

@@ -3,11 +3,13 @@ import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "simulator")
 public record SimulatorProperties(boolean enabled, int arrivalsPerMinute, Map<String,Integer> weights,
-                                  Map<String,Integer> appointmentWeights) {
+                                  Map<String,Integer> appointmentWeights,
+                                  Map<String,Integer> appointmentTypeWeights) {
     public SimulatorProperties {
         if (arrivalsPerMinute < 0) throw new IllegalArgumentException("Simulator rate must be nonnegative.");
         weights = validate(weights, "PHONE_ACCESS","APPOINTMENT","COMPUTER_ACCESS","JOB_SEARCH","DOCUMENT_SERVICES","BENEFITS_ASSISTANCE","OTHER");
         appointmentWeights = validate(appointmentWeights, "REEMPLOYMENT","CAREER_SERVICES","VETERANS");
+        appointmentTypeWeights = validate(appointmentTypeWeights, "INITIAL","FOLLOWUP");
     }
     private static Map<String,Integer> validate(Map<String,Integer> weights, String... allowed) {
         if (weights == null || weights.isEmpty()) throw new IllegalArgumentException("Simulator weights required.");

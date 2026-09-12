@@ -41,9 +41,10 @@ public class TrafficSimulator {
                 String choice = draw(properties.weights());
                 if (choice.equals("APPOINTMENT")) {
                     visits.checkIn(Visit.VisitType.APPOINTMENT, null,
-                        Visit.AppointmentCategory.valueOf(draw(properties.appointmentWeights())), "SIMULATOR");
+                        Visit.AppointmentCategory.valueOf(draw(properties.appointmentWeights())),
+                        Visit.AppointmentType.valueOf(draw(properties.appointmentTypeWeights())), "SIMULATOR");
                 } else {
-                    visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.valueOf(choice), null, "SIMULATOR");
+                    visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.valueOf(choice), null, null, "SIMULATOR");
                 }
                 createdSinceStart++;
             } catch (Exception exception) { log.error("Simulator arrival failed", exception); }

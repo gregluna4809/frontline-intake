@@ -32,3 +32,6 @@ simulator:
     REEMPLOYMENT: 60
     CAREER_SERVICES: 30
     VETERANS: 10
+  appointmentTypeWeights:
+    INITIAL: 30
+    FOLLOWUP: 70

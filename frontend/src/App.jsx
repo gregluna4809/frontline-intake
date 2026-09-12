@@ -8,6 +8,7 @@ import SimulatorControl from './SimulatorControl.jsx';
 function Kiosk() {
   const [visitType, setVisitType] = useState('');
   const [choice, setChoice] = useState('');
+  const [appointmentType, setAppointmentType] = useState('');
   const [visit, setVisit] = useState(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -16,12 +17,12 @@ function Kiosk() {
 
   async function checkIn(event) {
     event.preventDefault();
-    if (!visitType || !choice || submitting.current) return;
+    if (!visitType || !choice || (visitType === 'APPOINTMENT' && !appointmentType) || submitting.current) return;
     submitting.current = true;
     setPending(true);
     setError('');
     const intake = visitType === 'APPOINTMENT'
-      ? { visitType, appointmentCategory: choice }
+      ? { visitType, appointmentCategory: choice, appointmentType }
       : { visitType, reason: choice };
     try {
       setVisit(await request('/api/visits', { method: 'POST', body: JSON.stringify(intake) }));
@@ -43,7 +44,7 @@ function Kiosk() {
         <p className="ticket-reason">{visit.visitType === 'APPOINTMENT'
           ? appointmentCategoryLabel(visit.appointmentCategory) : reasonLabel(visit.reason)}</p>
         <p>Please take your ticket to the front desk.</p>
-        <button className="primary" onClick={() => { setVisit(null); setVisitType(''); setChoice(''); }}>
+        <button className="primary" onClick={() => { setVisit(null); setVisitType(''); setChoice(''); setAppointmentType(''); }}>
           Start a new check-in
         </button>
       </section>
@@ -63,7 +64,7 @@ function Kiosk() {
               <label key={value} className={visitType === value ? 'reason selected' : 'reason'}>
                 <span>{label}</span>
                 <input type="radio" name="visitType" value={value} checked={visitType === value}
-                  onChange={() => { setVisitType(value); setChoice(''); setError(''); }} required />
+                  onChange={() => { setVisitType(value); setChoice(''); setAppointmentType(''); setError(''); }} required />
               </label>
             ))}
           </div>
@@ -82,10 +83,24 @@ function Kiosk() {
             </div>
           </fieldset>
         )}
+        {visitType === 'APPOINTMENT' && (
+          <fieldset disabled={pending} className="appointment-type">
+            <legend>Appointment type</legend>
+            <div className="reason-grid">
+              {[['INITIAL', 'Initial'], ['FOLLOWUP', 'Follow-up']].map(([value, label]) => (
+                <label key={value} className={appointmentType === value ? 'reason selected' : 'reason'}>
+                  <span>{label}</span>
+                  <input type="radio" name="appointmentType" value={value} checked={appointmentType === value}
+                    onChange={() => setAppointmentType(value)} required />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
         {error && <p role="alert" className="error">{error}</p>}
         <div className="form-footer">
           <span>No personal details needed at check-in.</span>
-          <button className="primary" disabled={!visitType || !choice || pending}>
+          <button className="primary" disabled={!visitType || !choice || (visitType === 'APPOINTMENT' && !appointmentType) || pending}>
             {pending ? 'Checking in…' : 'Check in'}
           </button>
         </div>

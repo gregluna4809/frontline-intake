@@ -20,13 +20,15 @@ public class VisitRepository {
         this.jdbc = jdbc;
     }
 
-    public Visit create(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory) {
+    public Visit create(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory,
+                        Visit.AppointmentType appointmentType, Visit.AppointmentStatus appointmentStatus) {
         boolean appointment = visitType == Visit.VisitType.APPOINTMENT;
         return jdbc.sql("""
                 WITH ticket_number AS (SELECT nextval(CAST(:sequence AS regclass)) AS value)
-                INSERT INTO visit (ticket, visit_type, reason, appointment_category, status, created_at, version)
+                INSERT INTO visit (ticket, visit_type, reason, appointment_category, appointment_type,
+                                   appointment_status, status, created_at, version)
                 SELECT :prefix || lpad(value::text, greatest(4, length(value::text)), '0'),
-                       :visitType, :reason, :category, 'CHECKED_IN', CURRENT_TIMESTAMP, 0
+                       :visitType, :reason, :category, :appointmentType, :appointmentStatus, 'CHECKED_IN', CURRENT_TIMESTAMP, 0
                 FROM ticket_number
                 RETURNING *
                 """)
@@ -35,6 +37,8 @@ public class VisitRepository {
                 .param("visitType", visitType.name())
                 .param("reason", reason == null ? null : reason.name(), Types.VARCHAR)
                 .param("category", appointmentCategory == null ? null : appointmentCategory.name(), Types.VARCHAR)
+                .param("appointmentType", appointmentType == null ? null : appointmentType.name(), Types.VARCHAR)
+                .param("appointmentStatus", appointmentStatus == null ? null : appointmentStatus.name(), Types.VARCHAR)
                 .query(this::mapVisit)
                 .single();
     }
@@ -56,7 +60,8 @@ public class VisitRepository {
                 SELECT v.*, c.display_name, c.language, c.veteran,
                     (SELECT max(e.created_at) FROM visit_event e
                      WHERE e.visit_id = v.id AND e.to_status = v.status
-                       AND e.to_status IN ('WAITING_STAFF', 'WAITING_RESOURCE')) AS waiting_since
+                       AND e.to_status IN ('WAITING_STAFF', 'WAITING_RESOURCE')
+                       AND e.from_status IS DISTINCT FROM e.to_status) AS waiting_since
                 FROM visit v LEFT JOIN customer c ON c.id = v.customer_id
                 """;
         if (status != null) sql += " WHERE v.status = :status";
@@ -92,12 +97,25 @@ public class VisitRepository {
                 .query(this::mapVisit).optional();
     }
 
+    public Optional<Visit> assignStaff(Visit previous, long staffId) {
+        return jdbc.sql("""
+                UPDATE visit SET assigned_staff_id = :staffId, version = version + 1
+                WHERE id = :id AND version = :version AND status = 'WAITING_STAFF'
+                RETURNING *
+                """)
+                .param("staffId", staffId)
+                .param("id", previous.id())
+                .param("version", previous.version())
+                .query(this::mapVisit).optional();
+    }
+
     public void recordTransition(Visit previous, Visit updated) {
         jdbc.sql("""
-                INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at)
-                VALUES (:visitId, :fromStatus, :toStatus, :actor, CURRENT_TIMESTAMP)
+                INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
+                VALUES (:visitId, :fromStatus, :toStatus, :actor, CURRENT_TIMESTAMP, :note)
                 """)
                 .param("visitId", updated.id())
+                .param("note", staffAssignmentNote(previous, updated), Types.VARCHAR)
                 .param("fromStatus", previous.status().name())
                 .param("toStatus", updated.status().name())
                 .param("actor", switch (previous.status()) {
@@ -106,6 +124,15 @@ public class VisitRepository {
                     default -> "FRONT_DESK";
                 })
                 .update();
+    }
+
+    private String staffAssignmentNote(Visit previous, Visit updated) {
+        if (previous.status() != Visit.Status.WAITING_STAFF || updated.status() != Visit.Status.WAITING_STAFF)
+            return null;
+        return previous.assignedStaffId() == null
+                ? "Assigned staff ID: " + updated.assignedStaffId() + "."
+                : "Reassigned staff from ID: " + previous.assignedStaffId()
+                    + " to ID: " + updated.assignedStaffId() + ".";
     }
 
     public Optional<Visit> findById(long id) {
@@ -121,7 +148,7 @@ public class VisitRepository {
                         rs.getString("from_status") == null ? null
                                 : Visit.Status.valueOf(rs.getString("from_status")),
                         Visit.Status.valueOf(rs.getString("to_status")),
-                        rs.getString("actor"), rs.getTimestamp("created_at").toInstant()))
+                        rs.getString("actor"), rs.getTimestamp("created_at").toInstant(), rs.getString("note")))
                 .list();
     }
 
@@ -132,6 +159,11 @@ public class VisitRepository {
                 Visit.VisitType.valueOf(rs.getString("visit_type")),
                 rs.getString("reason") == null ? null : Visit.Reason.valueOf(rs.getString("reason")),
                 rs.getString("appointment_category"),
+                rs.getString("appointment_type") == null ? null
+                        : Visit.AppointmentType.valueOf(rs.getString("appointment_type")),
+                rs.getString("appointment_status") == null ? null
+                        : Visit.AppointmentStatus.valueOf(rs.getString("appointment_status")),
+                rs.getObject("assigned_staff_id", Long.class),
                 Visit.Status.valueOf(rs.getString("status")),
                 rs.getObject("customer_id", Long.class),
                 rs.getObject("resource_id", Long.class),

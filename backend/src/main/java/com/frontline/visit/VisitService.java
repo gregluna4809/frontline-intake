@@ -6,6 +6,7 @@ import com.frontline.model.Resource;
 import com.frontline.model.Visit;
 import com.frontline.model.VisitEvent;
 import com.frontline.resource.ResourceRepository;
+import com.frontline.staff.StaffRepository;
 import java.util.List;
 import java.util.Arrays;
 import org.springframework.http.HttpStatus;
@@ -18,28 +19,41 @@ public class VisitService {
     private final VisitRepository repository;
     private final CustomerRepository customers;
     private final ResourceRepository resources;
+    private final StaffRepository staff;
 
-    public VisitService(VisitRepository repository, CustomerRepository customers, ResourceRepository resources) {
+    public VisitService(VisitRepository repository, CustomerRepository customers, ResourceRepository resources,
+                        StaffRepository staff) {
         this.repository = repository;
         this.customers = customers;
         this.resources = resources;
+        this.staff = staff;
     }
 
     @Transactional
     public Visit checkIn(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory) {
-        return checkIn(visitType, reason, appointmentCategory, "KIOSK");
+        return checkIn(visitType, reason, appointmentCategory, null, "KIOSK");
     }
 
     @Transactional
     public Visit checkIn(Visit.VisitType visitType, Visit.Reason reason,
-                         Visit.AppointmentCategory appointmentCategory, String actor) {
-        boolean walkIn = visitType == Visit.VisitType.WALK_IN && reason != null && appointmentCategory == null;
-        boolean appointment = visitType == Visit.VisitType.APPOINTMENT && appointmentCategory != null && reason == null;
+                         Visit.AppointmentCategory appointmentCategory, Visit.AppointmentType appointmentType) {
+        return checkIn(visitType, reason, appointmentCategory, appointmentType, "KIOSK");
+    }
+
+    @Transactional
+    public Visit checkIn(Visit.VisitType visitType, Visit.Reason reason,
+                         Visit.AppointmentCategory appointmentCategory, Visit.AppointmentType appointmentType,
+                         String actor) {
+        boolean walkIn = visitType == Visit.VisitType.WALK_IN && reason != null
+                && appointmentCategory == null && appointmentType == null;
+        boolean appointment = visitType == Visit.VisitType.APPOINTMENT && appointmentCategory != null
+                && appointmentType != null && reason == null;
         if (!walkIn && !appointment) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "WALK_IN requires only reason; APPOINTMENT requires only appointmentCategory.");
+                    "WALK_IN requires only reason; APPOINTMENT requires appointmentCategory and appointmentType only.");
         }
-        Visit visit = repository.create(visitType, reason, appointmentCategory);
+        Visit.AppointmentStatus appointmentStatus = appointment ? Visit.AppointmentStatus.SCHEDULED : null;
+        Visit visit = repository.create(visitType, reason, appointmentCategory, appointmentType, appointmentStatus);
         if ("KIOSK".equals(actor)) repository.recordCheckIn(visit);
         else repository.recordCheckIn(visit, actor);
         return visit;
@@ -98,6 +112,16 @@ public class VisitService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "No matching resource is free. Refresh the inventory before trying again."));
         return describe(transition(previous, Visit.Status.AT_RESOURCE, previous.customerId(), resource.id()));
+    }
+
+    @Transactional
+    public VisitDetail assignStaff(long id, long staffId, long expectedVersion) {
+        Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
+        staff.findById(staffId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff not found."));
+        Visit updated = repository.assignStaff(previous, staffId).orElseThrow(this::staleVersion);
+        repository.recordTransition(previous, updated);
+        return describe(updated);
     }
 
     private VisitDetail finish(Visit previous, Visit.Status next) {

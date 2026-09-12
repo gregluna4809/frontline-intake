@@ -8,5 +8,6 @@ public record VisitEvent(
         Visit.Status fromStatus,
         Visit.Status toStatus,
         String actor,
-        Instant createdAt
+        Instant createdAt,
+        String note
 ) {}

@@ -83,14 +83,17 @@ test('front desk reports a failed queue load and can refresh successfully', asyn
   expect(screen.queryByRole('alert')).toBeNull();
 });
 test.each([
-  ['REEMPLOYMENT', 'Reemployment'],
-  ['CAREER_SERVICES', 'Career Services'],
-  ['VETERANS', 'Veterans'],
-])('kiosk creates %s appointment and discards the previous walk-in choice', async (category, label) => {
+  ['REEMPLOYMENT', 'Reemployment', 'INITIAL', 'Initial'],
+  ['CAREER_SERVICES', 'Career Services', 'INITIAL', 'Initial'],
+  ['VETERANS', 'Veterans', 'INITIAL', 'Initial'],
+  ['REEMPLOYMENT', 'Reemployment', 'FOLLOWUP', 'Follow-up'],
+  ['CAREER_SERVICES', 'Career Services', 'FOLLOWUP', 'Follow-up'],
+  ['VETERANS', 'Veterans', 'FOLLOWUP', 'Follow-up'],
+])('kiosk creates %s appointment and discards the previous walk-in choice', async (category, label, appointmentType, typeLabel) => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     json: async () => ({
-      id: 1, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: category,
+      id: 1, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: category, appointmentType,
     }),
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -103,12 +106,14 @@ test.each([
   expect(screen.queryByRole('radio', { name: /Phone Access/ })).toBeNull();
   expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
   await user.click(screen.getByRole('radio', { name: new RegExp(label) }));
+  expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
+  await user.click(screen.getByRole('radio', { name: typeLabel }));
   await user.click(screen.getByRole('button', { name: 'Check in' }));
   expect(await screen.findByText('A0001')).toBeTruthy();
   expect(screen.getByText(label)).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledWith('/api/visits', expect.objectContaining({
     method: 'POST',
-    body: JSON.stringify({ visitType: 'APPOINTMENT', appointmentCategory: category }),
+    body: JSON.stringify({ visitType: 'APPOINTMENT', appointmentCategory: category, appointmentType }),
   }));
 });
 
@@ -122,6 +127,7 @@ test('switching from appointment to walk-in discards the category', async () => 
   const user = userEvent.setup();
   await user.click(screen.getByRole('radio', { name: 'Appointment' }));
   await user.click(screen.getByRole('radio', { name: /Veterans/ }));
+  await user.click(screen.getByRole('radio', { name: 'Follow-up' }));
   await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
   expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
   await user.click(screen.getByRole('radio', { name: /Job Search/ }));
