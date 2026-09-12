@@ -125,3 +125,12 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
   .section-heading .intro { margin-bottom: 0; }
   td, th { padding: 15px; }
 }
+
+.topbar { flex-wrap: wrap; }
+.simulator-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+.simulator-control small { display: block; color: #60716b; margin-top: 3px; }
+.simulator-control button { padding: 8px 14px; }
+.simulator-dot { width: 9px; height: 9px; border-radius: 50%; background: #88958e; }
+.simulator-dot.running { background: #25804e; }
+.simulator-rate { color: #60716b; white-space: nowrap; }
+.simulator-error { flex-basis: 100%; color: #8b3328; max-width: 280px; }

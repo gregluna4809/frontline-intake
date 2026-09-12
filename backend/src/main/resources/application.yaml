@@ -16,3 +16,19 @@ server:
   error:
     include-message: never
     include-stacktrace: never
+
+simulator:
+  enabled: false
+  arrivalsPerMinute: 4
+  weights:
+    PHONE_ACCESS: 70
+    APPOINTMENT: 20
+    COMPUTER_ACCESS: 3
+    JOB_SEARCH: 2
+    DOCUMENT_SERVICES: 2
+    BENEFITS_ASSISTANCE: 2
+    OTHER: 1
+  appointmentWeights:
+    REEMPLOYMENT: 60
+    CAREER_SERVICES: 30
+    VETERANS: 10

@@ -39,13 +39,15 @@ public class VisitRepository {
                 .single();
     }
 
-    public void recordCheckIn(Visit visit) {
+    public void recordCheckIn(Visit visit) { recordCheckIn(visit, "KIOSK"); }
+
+    public void recordCheckIn(Visit visit, String actor) {
         jdbc.sql("""
                 INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at)
-                VALUES (:visitId, NULL, 'CHECKED_IN', 'KIOSK', :createdAt)
+                VALUES (:visitId, NULL, 'CHECKED_IN', :actor, :createdAt)
                 """)
                 .param("visitId", visit.id())
-                .param("createdAt", Timestamp.from(visit.createdAt()))
+                .param("actor", actor).param("createdAt", Timestamp.from(visit.createdAt()))
                 .update();
     }
 

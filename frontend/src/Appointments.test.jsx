@@ -1,3 +1,4 @@
+vi.mock('./SimulatorControl.jsx', () => ({ default: () => null }));
 import React from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';

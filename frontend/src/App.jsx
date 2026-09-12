@@ -3,6 +3,7 @@ import { reasons, reasonLabel, appointmentCategories, appointmentCategoryLabel, 
 import Appointments from './Appointments.jsx';
 import ResourceRoom from './ResourceRoom.jsx';
 import FrontDesk from './FrontDesk.jsx';
+import SimulatorControl from './SimulatorControl.jsx';
 
 function Kiosk() {
   const [visitType, setVisitType] = useState('');
@@ -104,6 +105,7 @@ export default function App() {
       <div className="demo-banner">Synthetic demo — no real data</div>
       <header className="topbar">
         <a className="brand" href="/kiosk"><span className="brand-mark">F</span><span>Frontline<small>Career Center</small></span></a>
+        <SimulatorControl />
         <label className="role-switcher">
           <span>View as</span>
           <select aria-label="Role" value={supported ? role : ''} onChange={event => { window.location.href = '/' + event.target.value; }}>

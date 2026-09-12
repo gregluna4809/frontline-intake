@@ -27,6 +27,12 @@ public class VisitService {
 
     @Transactional
     public Visit checkIn(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory) {
+        return checkIn(visitType, reason, appointmentCategory, "KIOSK");
+    }
+
+    @Transactional
+    public Visit checkIn(Visit.VisitType visitType, Visit.Reason reason,
+                         Visit.AppointmentCategory appointmentCategory, String actor) {
         boolean walkIn = visitType == Visit.VisitType.WALK_IN && reason != null && appointmentCategory == null;
         boolean appointment = visitType == Visit.VisitType.APPOINTMENT && appointmentCategory != null && reason == null;
         if (!walkIn && !appointment) {
@@ -34,7 +40,8 @@ public class VisitService {
                     "WALK_IN requires only reason; APPOINTMENT requires only appointmentCategory.");
         }
         Visit visit = repository.create(visitType, reason, appointmentCategory);
-        repository.recordCheckIn(visit);
+        if ("KIOSK".equals(actor)) repository.recordCheckIn(visit);
+        else repository.recordCheckIn(visit, actor);
         return visit;
     }
 
