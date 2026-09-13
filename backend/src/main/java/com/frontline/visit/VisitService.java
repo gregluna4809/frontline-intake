@@ -1,6 +1,9 @@
 package com.frontline.visit;
 
 import com.frontline.customer.CustomerRepository;
+import com.frontline.business.BusinessCalendar;
+import com.frontline.business.TicketSequenceService;
+import java.time.LocalDate;
 import com.frontline.model.Customer;
 import com.frontline.model.Resource;
 import com.frontline.model.Staff;
@@ -21,13 +24,17 @@ public class VisitService {
     private final CustomerRepository customers;
     private final ResourceRepository resources;
     private final StaffRepository staff;
+    private final BusinessCalendar calendar;
+    private final TicketSequenceService tickets;
 
     public VisitService(VisitRepository repository, CustomerRepository customers, ResourceRepository resources,
-                        StaffRepository staff) {
+                        StaffRepository staff, BusinessCalendar calendar, TicketSequenceService tickets) {
         this.repository = repository;
         this.customers = customers;
         this.resources = resources;
         this.staff = staff;
+        this.calendar = calendar;
+        this.tickets = tickets;
     }
 
     @Transactional
@@ -54,7 +61,7 @@ public class VisitService {
                     "WALK_IN requires only reason; APPOINTMENT requires appointmentCategory and appointmentType only.");
         }
         Visit.AppointmentStatus appointmentStatus = appointment ? Visit.AppointmentStatus.SCHEDULED : null;
-        Visit visit = repository.create(visitType, reason, appointmentCategory, appointmentType, appointmentStatus);
+        Visit visit = repository.create(visitType, reason, appointmentCategory, appointmentType, appointmentStatus, tickets.prepareForCreation());
         if ("KIOSK".equals(actor)) repository.recordCheckIn(visit);
         else repository.recordCheckIn(visit, actor);
         return visit;
@@ -62,7 +69,12 @@ public class VisitService {
 
     @Transactional(readOnly = true)
     public List<VisitQueueItem> list(Visit.Status status) {
-        return repository.findAll(status);
+        return list(status, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<VisitQueueItem> list(Visit.Status status, LocalDate businessDate) {
+        return repository.findAll(status, businessDate == null ? calendar.currentBusinessDate() : businessDate);
     }
 
     @Transactional(readOnly = true)
@@ -103,9 +115,10 @@ public class VisitService {
         if (previous.visitType() != Visit.VisitType.APPOINTMENT || previous.customerId() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Rescheduling requires an identified appointment.");
         }
+        LocalDate businessDate = tickets.prepareForCreation();
         VisitDetail closed = finish(previous, Visit.Status.CLOSED,
                 "Rescheduled appointment; replacement links to this visit via previousVisitId.");
-        Visit replacement = repository.createRescheduled(previous);
+        Visit replacement = repository.createRescheduled(previous, businessDate);
         repository.recordRescheduled(replacement);
         return new RescheduleResult(closed, describe(replacement));
     }

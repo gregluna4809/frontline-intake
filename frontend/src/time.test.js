@@ -7,7 +7,9 @@ test('waiting time handles short waits, hours and missing timestamps', () => {
   expect(waitingTime(null, now)).toBe('—');
 });
 
-test('coverage dates use the local calendar day on either side of midnight', () => {
-  expect(calendarDate(new Date(2026, 8, 8, 23, 59).getTime())).toBe('2026-09-08');
-  expect(calendarDate(new Date(2026, 8, 9, 0, 1).getTime())).toBe('2026-09-09');
+test('coverage dates use the Eastern calendar day independently of browser timezone', () => {
+  expect(calendarDate(Date.parse('2026-09-09T03:59:00Z'))).toBe('2026-09-08');
+  expect(calendarDate(Date.parse('2026-09-09T04:01:00Z'))).toBe('2026-09-09');
+  expect(calendarDate(Date.parse('2026-12-09T04:59:00Z'))).toBe('2026-12-08');
+  expect(calendarDate(Date.parse('2026-12-09T05:01:00Z'))).toBe('2026-12-09');
 });

@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "business.scheduling.enabled=false")
 @AutoConfigureMockMvc
 @Testcontainers
 class CoverageApiTest {
@@ -44,7 +44,7 @@ class CoverageApiTest {
     }
 
     private LocalDate nextMonday() {
-        return LocalDate.now().with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+        return LocalDate.now(com.frontline.business.BusinessCalendar.ZONE).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
     }
 
     @Test
@@ -86,7 +86,7 @@ class CoverageApiTest {
 
     @Test
     void callOutUpsertsReasonWithoutDuplicatingStaffAndDate() throws Exception {
-        LocalDate date = LocalDate.now();
+        LocalDate date = LocalDate.now(com.frontline.business.BusinessCalendar.ZONE);
         mvc.perform(post("/api/call-outs").contentType("application/json")
                         .content("{\"staffId\":1,\"date\":\"" + date + "\",\"reason\":\"Demo coverage\"}"))
                 .andExpect(status().isOk());
@@ -109,7 +109,7 @@ class CoverageApiTest {
     @Test
     void pastCallOutIsRejectedWithoutWriting() throws Exception {
         mvc.perform(post("/api/call-outs").contentType("application/json")
-                        .content("{\"staffId\":1,\"date\":\"" + LocalDate.now().minusDays(1) + "\"}"))
+                        .content("{\"staffId\":1,\"date\":\"" + LocalDate.now(com.frontline.business.BusinessCalendar.ZONE).minusDays(1) + "\"}"))
                 .andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM call_out", Integer.class)).isZero();
     }

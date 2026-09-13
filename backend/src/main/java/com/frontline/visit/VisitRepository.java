@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -21,17 +22,18 @@ public class VisitRepository {
     }
 
     public Visit create(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory,
-                        Visit.AppointmentType appointmentType, Visit.AppointmentStatus appointmentStatus) {
+                        Visit.AppointmentType appointmentType, Visit.AppointmentStatus appointmentStatus, LocalDate businessDate) {
         boolean appointment = visitType == Visit.VisitType.APPOINTMENT;
         return jdbc.sql("""
                 WITH ticket_number AS (SELECT nextval(CAST(:sequence AS regclass)) AS value)
                 INSERT INTO visit (ticket, visit_type, reason, appointment_category, appointment_type,
-                                   appointment_status, status, created_at, version)
+                                   appointment_status, status, created_at, version, business_date)
                 SELECT :prefix || lpad(value::text, greatest(4, length(value::text)), '0'),
-                       :visitType, :reason, :category, :appointmentType, :appointmentStatus, 'CHECKED_IN', CURRENT_TIMESTAMP, 0
+                       :visitType, :reason, :category, :appointmentType, :appointmentStatus, 'CHECKED_IN', CURRENT_TIMESTAMP, 0, :businessDate
                 FROM ticket_number
                 RETURNING *
                 """)
+                .param("businessDate", businessDate)
                 .param("sequence", appointment ? "appointment_ticket_sequence" : "visit_ticket_sequence")
                 .param("prefix", appointment ? "A" : "B")
                 .param("visitType", visitType.name())
@@ -43,17 +45,18 @@ public class VisitRepository {
                 .single();
     }
 
-    public Visit createRescheduled(Visit previous) {
+    public Visit createRescheduled(Visit previous, LocalDate businessDate) {
         return jdbc.sql("""
                 WITH ticket_number AS (SELECT nextval('appointment_ticket_sequence') AS value)
                 INSERT INTO visit (ticket, visit_type, appointment_category, appointment_type,
-                                   appointment_status, status, customer_id, previous_visit_id, created_at, version)
+                                   appointment_status, status, customer_id, previous_visit_id, created_at, version, business_date)
                 SELECT 'A' || lpad(value::text, greatest(4, length(value::text)), '0'),
                        'APPOINTMENT', :category, :appointmentType, 'RESCHEDULED', 'WAITING_STAFF',
-                       :customerId, :previousVisitId, CURRENT_TIMESTAMP, 0
+                       :customerId, :previousVisitId, CURRENT_TIMESTAMP, 0, :businessDate
                 FROM ticket_number
                 RETURNING *
                 """)
+                .param("businessDate", businessDate)
                 .param("category", previous.appointmentCategory())
                 .param("appointmentType", previous.appointmentType().name())
                 .param("customerId", previous.customerId())
@@ -83,7 +86,7 @@ public class VisitRepository {
                 .update();
     }
 
-    public List<VisitQueueItem> findAll(Visit.Status status) {
+    public List<VisitQueueItem> findAll(Visit.Status status, LocalDate businessDate) {
         String sql = """
                 SELECT v.*, c.display_name, c.language, c.veteran,
                     (SELECT max(e.created_at) FROM visit_event e
@@ -91,10 +94,11 @@ public class VisitRepository {
                        AND e.to_status IN ('WAITING_STAFF', 'WAITING_RESOURCE')
                        AND e.from_status IS DISTINCT FROM e.to_status) AS waiting_since
                 FROM visit v LEFT JOIN customer c ON c.id = v.customer_id
+                WHERE v.business_date = :businessDate
                 """;
-        if (status != null) sql += " WHERE v.status = :status";
+        if (status != null) sql += " AND v.status = :status";
         sql += " ORDER BY v.created_at, v.id";
-        var query = jdbc.sql(sql);
+        var query = jdbc.sql(sql).param("businessDate", businessDate);
         if (status != null) query.param("status", status.name());
         return query.query((rs, row) -> {
             Visit visit = mapVisit(rs, row);
@@ -201,6 +205,7 @@ public class VisitRepository {
                 rs.getObject("resource_id", Long.class),
                 rs.getTimestamp("created_at").toInstant(),
                 closedAt == null ? null : closedAt.toInstant(),
-                rs.getLong("version"), rs.getObject("previous_visit_id", Long.class));
+                rs.getLong("version"), rs.getObject("previous_visit_id", Long.class),
+                rs.getObject("business_date", LocalDate.class));
     }
 }

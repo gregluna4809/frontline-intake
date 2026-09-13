@@ -1,6 +1,7 @@
 package com.frontline.coverage;
 
 import com.frontline.model.CallOut;
+import com.frontline.business.BusinessCalendar;
 import com.frontline.model.Staff;
 import com.frontline.model.StaffDuty;
 import com.frontline.staff.StaffRepository;
@@ -15,10 +16,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class CoverageService {
     private final CoverageRepository repository;
     private final StaffRepository staff;
+    private final BusinessCalendar calendar;
 
-    public CoverageService(CoverageRepository repository, StaffRepository staff) {
+    public CoverageService(CoverageRepository repository, StaffRepository staff, BusinessCalendar calendar) {
         this.repository = repository;
         this.staff = staff;
+        this.calendar = calendar;
     }
 
     @Transactional(readOnly = true)
@@ -33,7 +36,7 @@ public class CoverageService {
 
     @Transactional
     public CallOut callOut(long staffId, LocalDate date, String reason) {
-        if (requireDate(date).isBefore(LocalDate.now())) {
+        if (requireDate(date).isBefore(calendar.calendarDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Call-out date cannot be in the past.");
         }
         Staff target = staff.findById(staffId)

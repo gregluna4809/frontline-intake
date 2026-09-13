@@ -12,7 +12,7 @@ function AssignmentRow({ visit, staff, queue }) {
   return (
     <tr>
       <td className="table-ticket">{visit.ticket}
-        {orphaned && <small className="orphaned-badge">Orphaned — staff on Resource Room today</small>}
+        {orphaned && <small className="orphaned-badge">Orphaned — staff on Resource Room this business day</small>}
       </td>
       <td>{appointmentTypeLabel(visit.appointmentType)}</td>
       <td>{appointmentStatusLabel(visit.appointmentStatus)}</td>
@@ -64,7 +64,7 @@ export default function Supervisor() {
       {queue.queueError && <p role="alert" className="error">{queue.queueError} The board may be out of date.</p>}
       {queue.actionError && <p role="alert" className="error">{queue.actionError}</p>}
       {queue.notice && <p role="status" className="routing-result">{queue.notice}</p>}
-      {queue.snapshot && <CoveragePanel key={queue.today} queue={queue} />}
+      {queue.snapshot && <CoveragePanel key={queue.snapshot.date} queue={queue} />}
       {!queue.snapshot ? <p role="status" className="empty">
         {queue.queueError ? 'Board unavailable.' : 'Loading supervisor board…'}
       </p> : (

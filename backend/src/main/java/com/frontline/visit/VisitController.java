@@ -5,6 +5,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.net.URI;
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
@@ -28,8 +30,9 @@ public class VisitController {
     }
 
     @GetMapping
-    public List<VisitQueueItem> list(@RequestParam(required = false) Visit.Status status) {
-        return service.list(status);
+    public List<VisitQueueItem> list(@RequestParam(required = false) Visit.Status status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate) {
+        return service.list(status, businessDate);
     }
 
     @GetMapping("/{id}")

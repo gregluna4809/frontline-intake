@@ -115,7 +115,7 @@ export default function ResourceRoom() {
                         </div>
                         {occupied ? (
                           <>
-                            <p className="tile-ticket">{resource.ticket || 'Visit unavailable'}</p>
+                            <p className="tile-ticket">{resource.ticket || 'Occupied outside this business day'}</p>
                             <p className="tile-customer">{resource.customer?.displayName || 'Customer unavailable'}</p>
                             <p className="tile-time">At resource: {waitingTime(resource.assignedAt, now)}</p>
                             {overdue && <p className="overdue-label">Over {RESOURCE_ALERT_MINUTES} min</p>}

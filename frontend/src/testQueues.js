@@ -17,6 +17,7 @@ export function appointments() {
     waitingSince: new Date(now - 300000).toISOString(),
   }));
 }
+export const businessStatus = { isOpen: true, currentBusinessDate: '2026-09-08', lastCompletedBusinessDate: '2026-09-04' };
 export function rotation() {
   return staff.filter(person => person.role === 'LSR').map(person => ({
     staffId: person.id, displayName: person.displayName, dutyType: 'APPOINTMENTS',
@@ -26,6 +27,7 @@ export const ok = data => ({ ok: true, json: async () => data });
 export function mockQueues(initial = appointments()) {
   const state = { visits: initial, coverage: rotation() };
   const fetchMock = vi.fn(async (path, options = {}) => {
+    if (path === '/api/business-status') return ok(businessStatus);
     if (path === '/api/staff') return ok(staff);
     if (path.startsWith('/api/rotation?date=')) return ok(state.coverage.map(person => ({ ...person })));
     if (path === '/api/call-outs' && options.method === 'POST') {
@@ -34,7 +36,7 @@ export function mockQueues(initial = appointments()) {
         ? { ...person, dutyType: 'RESOURCE_ROOM' } : person);
       return ok({ id: 1, ...body });
     }
-    if (path === '/api/visits?status=WAITING_STAFF') return ok(state.visits.map(visit => ({ ...visit })));
+    if (path.startsWith('/api/visits?status=WAITING_STAFF')) return ok(state.visits.map(visit => ({ ...visit })));
     const match = path.match(/^\/api\/visits\/(\d+)\/(assign-staff|close|reschedule)$/);
     if (!match || options.method !== 'POST') throw new Error('Unexpected request: ' + path);
     const id = Number(match[1]);

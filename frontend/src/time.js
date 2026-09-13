@@ -8,7 +8,8 @@ export function waitingTime(waitingSince, now) {
 }
 
 export function calendarDate(now) {
-  const date = new Date(now);
-  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0')].join('-');
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(now)).map(part => [part.type, part.value]));
+  return [parts.year, parts.month, parts.day].join('-');
 }

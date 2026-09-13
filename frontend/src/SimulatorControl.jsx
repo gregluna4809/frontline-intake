@@ -3,6 +3,7 @@ import { request } from './api.js';
 
 export default function SimulatorControl() {
   const [status, setStatus] = useState(null);
+  const [business, setBusiness] = useState(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const busy = useRef(false);
@@ -14,13 +15,16 @@ export default function SimulatorControl() {
     async function load() {
       const currentRevision = revision.current;
       try {
-        const data = await request('/api/simulator/status', { signal: controller.signal });
+        const [data, businessStatus] = await Promise.all([
+          request('/api/simulator/status', { signal: controller.signal }),
+          request('/api/business-status', { signal: controller.signal }),
+        ]);
         if (active && currentRevision === revision.current && !busy.current) {
-          setStatus(data); setError('');
+          setStatus(data); setBusiness(businessStatus); setError('');
         }
       } catch (failure) {
         if (active && currentRevision === revision.current) {
-          setStatus(null); setError(failure.message);
+          setStatus(null); setBusiness(null); setError(failure.message);
         }
       } finally {
         if (active) timer = setTimeout(load, 5000);
@@ -44,8 +48,12 @@ export default function SimulatorControl() {
     <div className="simulator-control" aria-label="Traffic simulator">
       <span className={'simulator-dot' + (status?.running ? ' running' : '')} aria-hidden="true" />
       <span>Simulator <small>{status ? (status.running ? 'Running' : 'Stopped') : 'Unavailable'}</small></span>
+      {business && <span className="business-status"><strong>{business.isOpen ? 'Open' : 'Closed'}</strong>
+        <small>Business day {business.currentBusinessDate}</small>
+      </span>}
       {status && <span className="simulator-rate">{status.arrivalsPerMinute}/min</span>}
-      <button className="secondary" disabled={!status || pending} onClick={toggle}>
+      <button className="secondary" disabled={!status || pending} onClick={toggle}
+        title="Business-hours control automatically updates the simulator every minute">
         {status?.running ? 'Stop' : 'Start'}
       </button>
       {error && <span role="alert" className="simulator-error">{error}</span>}

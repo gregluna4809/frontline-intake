@@ -1,6 +1,7 @@
 package com.frontline.model;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 public record Visit(
         long id,
@@ -17,7 +18,8 @@ public record Visit(
         Instant createdAt,
         Instant closedAt,
         long version,
-        Long previousVisitId
+        Long previousVisitId,
+        LocalDate businessDate
 ) {
     public enum VisitType { WALK_IN, APPOINTMENT }
     public Resource.Type requiredResourceType() {

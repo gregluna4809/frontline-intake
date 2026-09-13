@@ -10,7 +10,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - React 19 / Vite 8 kiosk, front-desk, resource-room, supervisor, and my-queue routes.
 - Kiosk starts with Walk-In or Appointment. Walk-ins choose a reason; appointments choose REEMPLOYMENT, CAREER_SERVICES, or VETERANS, plus Initial or Follow-up.
 - Check-in creates a CHECKED_IN visit and its VisitEvent in one transaction. Walk-ins use B tickets; appointments use A tickets with an independent sequence.
-- Front desk lists CHECKED_IN visits in arrival order and refreshes every 5 seconds.
+- Front desk lists CHECKED_IN and IDENTIFIED visits in arrival order and refreshes every 5 seconds.
 - Select a ticket, search and attach a customer, then route the visit. The panel shows the attached name/ID and routing result.
 - Identify and route use optimistic version checks and write FRONT_DESK events in the same transaction as the visit and resource updates.
 - Supervisor groups WAITING_STAFF visits into Unassigned and one group per LSR. Each visit shows ticket, type, appointment status, waiting time, and an Assign/Reassign control. Supervising LSRs are not assignable targets.
@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–7 are implemented. No login, app Dockerfile, or deployment configuration is included.
+Steps 1–8 are implemented. No login, app Dockerfile, or deployment configuration is included.
 
 ## Run on Windows PowerShell
 
@@ -71,8 +71,8 @@ The default database credential is for this synthetic local demo. PostgreSQL is 
 | Method | Path | Result |
 | --- | --- | --- |
 | POST | /api/visits | Body: `{"visitType":"WALK_IN","reason":"PHONE_ACCESS"}` or `{"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":"INITIAL"}`; returns 201 with visit and Location header |
-| GET | /api/visits?status=CHECKED_IN | Visits matching the status, oldest first; also supports WAITING_STAFF and WAITING_RESOURCE |
-| GET | /api/visits | All visits, oldest first |
+| GET | /api/visits?status=CHECKED_IN | Current business-day visits matching the status, oldest first; also supports IDENTIFIED, WAITING_STAFF, and WAITING_RESOURCE |
+| GET | /api/visits | Current business-day visits, oldest first; optional `businessDate=YYYY-MM-DD` selects another day |
 | GET | /api/visits/{id} | Object with `visit`, `events`, `customer`, `resource`, and `requiredResourceType`; includes an ETag |
 | GET | /api/customers?q= | Case-insensitive literal display-name search; at most 20 results, ordered by name and ID |
 | POST | /api/visits/{id}/identify | Body: `{"customerId":1}`; CHECKED_IN → IDENTIFIED |
@@ -80,7 +80,7 @@ The default database credential is for this synthetic local demo. PostgreSQL is 
 | POST | /api/visits/{id}/close | No body; AT_RESOURCE or WAITING_STAFF → CLOSED; stamps closedAt and frees the resource if present |
 | POST | /api/visits/{id}/left | No body; any status except CLOSED/LEFT → LEFT; stamps closedAt and frees the resource if present |
 | POST | /api/visits/{id}/assign | No body; WAITING_RESOURCE → AT_RESOURCE; 409 if no matching resource is free |
-| GET | /api/resources | Inventory with current visitId, ticket, customer, visitVersion, and assignedAt when occupied |
+| GET | /api/resources | Current inventory with occupied visit metadata scoped to the business day; optional `businessDate=YYYY-MM-DD` |
 | GET | /api/staff | All staff ordered by role then display name; screens and role selector filter assignable staff to LSR |
 | POST | /api/visits/{id}/assign-staff | Body: `{"staffId":1}`; requires If-Match; assigns or reassigns a WAITING_STAFF visit, increments version, and records an event note |
 
@@ -116,25 +116,39 @@ Migration V6 adds `staff_rotation`, `call_out`, and the nullable `visit.previous
 | GET | /api/call-outs?date=YYYY-MM-DD | Call-outs for that date, ordered by staff ID |
 | POST | /api/visits/{id}/reschedule | No body; requires the current quoted If-Match version; returns 201 with `{ closedVisit, replacementVisit }` visit-detail objects and a Location header for the replacement |
 
-Call-outs upsert on `(staff_id, date)`: later requests replace the reason while retaining the row ID and original creation timestamp. Omitted or blank reasons become null. Past dates are rejected with 400 using the backend's local calendar date; unknown staff return 404 and non-LSR targets return 409. Missing or malformed dates return 400. GET endpoints also support historical dates.
+Call-outs upsert on `(staff_id, date)`: later requests replace the reason while retaining the row ID and original creation timestamp. Omitted or blank reasons become null. Past dates are rejected with 400 using the America/New_York calendar date; unknown staff return 404 and non-LSR targets return 409. Missing or malformed dates return 400. GET endpoints also support historical dates.
 
-The supervisor board's Today's coverage panel queries the browser's local calendar date, displays every LSR's effective duty, and provides a small Mark called out form. For this prototype, a call-out means the selected LSR covers Resource Room, rather than an absence from the center. Assigned waiting appointments are flagged whenever their LSR's effective duty is RESOURCE_ROOM, whether from the base rotation or a call-out. Assignment remains a supervisor decision; call-outs do not silently reassign or close visits. Coverage and queues refresh together every five seconds and after mutations; actions stay disabled until that refresh succeeds. An open board changes the requested date at local midnight. Run the backend and browser with the same local calendar/timezone when using the Today's coverage actions.
+The supervisor board's Business-day coverage panel uses `/api/business-status` to load rotation and waiting appointments for the same business date. It displays every LSR's effective duty and provides a small Mark called out form when that date is the current America/New_York calendar date. When showing an earlier business day, call-out controls are disabled because past dates cannot be changed. For this prototype, a call-out means the selected LSR covers Resource Room, rather than an absence from the center. Assigned waiting appointments are flagged whenever their LSR's effective duty is RESOURCE_ROOM, whether from the base rotation or a call-out. Assignment remains a supervisor decision; call-outs do not silently reassign or close visits. Coverage and queues refresh together every five seconds and after mutations; actions stay disabled until that refresh succeeds.
 
 Reschedule is available for every waiting appointment on the supervisor board and alongside Close in My Queue. It uses the normal CLOSED transition and closedAt timestamp, with an explicit rescheduling note in the old visit's event log. In the same transaction it creates a fresh A ticket with the same customer, appointment type, and category, appointmentStatus RESCHEDULED, status WAITING_STAFF, version 0, and no staff or resource assignment. The replacement's previousVisitId links back to the old visit; a unique foreign key prevents multiple direct replacements. Its initial event records entry to WAITING_STAFF and starts a fresh waiting timer. Failures roll back the closure, replacement, and both event writes together. Repeated or competing requests are guarded by the existing version and status checks.
 
 Resource-room visits are not assigned to staff, so that screen remains unchanged. The new tests cover rotation seeds and date isolation, call-out upserts and validation, orphan flagging and recovery, rescheduling from both staff screens, preserved customer/classification, history links, rollback, and concurrency.
 
+## Step 8: business calendar and day scoping
+
+The business calendar uses America/New_York, Monday through Friday, 8:30am inclusive to 4:45pm exclusive. Its static holiday list covers 2026 and 2027 and must be extended before 2028. The requested holidays follow the [2026](https://www.cs.ny.gov/attendance_leave/2026_legal_holidays.cfm) and [2027](https://www.cs.ny.gov/attendance_leave/2027_legal_holidays.cfm) observed dates: Saturday holidays stay Saturday, Sunday holidays are observed Monday. The requested day after Thanksgiving is also closed.
+
+`GET /api/business-status` returns `{ isOpen, currentBusinessDate, lastCompletedBusinessDate }`. While open, currentBusinessDate is today. Before opening, on weekends, and on holidays it is the most recently completed business day; after closing on a business day it is that same day. The simulator control displays the open/closed state and effective business date.
+
+Migration V7 adds non-null `visit.business_date`, backfills existing rows from created_at in America/New_York, and changes ticket uniqueness to `(business_date, ticket)`. Check-in, simulator creation, and rescheduling all stamp the business calendar's currentBusinessDate. Closed-hours manual creation is allowed and receives the most recently completed business date.
+
+Visit queues default to this date. `GET /api/visits?businessDate=YYYY-MM-DD` selects a specific day and can be combined with status. Detail/history reads by visit ID remain available across dates. `/api/resources` scopes occupant metadata the same way and accepts the same optional date. Resource availability remains its actual current state: day rollover does not free occupied resources or close old visits. Other-day occupants display an explanatory label; use the explicit date or visit ID to access and close those visits. This is date filtering, not the frozen historical snapshot planned for Step 9.
+
+Every minute, a scheduled task starts or stops the simulator using its existing methods according to business hours. Manual start/stop still works, but the next scheduled check restores the calendar's state. A weekday 8:30am Eastern task resets both ticket sequences to 1, skipping holidays. Creation and reset share a PostgreSQL transaction advisory lock; the first creation also catches up after a missed opening when earlier-day visits exist. Reset never rewinds tickets already issued for the current business day, including when an arrival races the scheduled task. Historical tickets remain valid because uniqueness is per business date.
+
+Tests disable the live business schedules with `business.scheduling.enabled=false` and exercise the calendar and schedule methods directly under controlled clocks. Tests cover hour boundaries, weekends, holidays and observance, daylight-saving offsets, status responses, all creation paths, default/explicit date filtering, migration backfill, sequence resets and concurrent arrivals. Frontend tests cover business status display, business-date coverage alignment, and disabled past-date call-outs.
+
 ## Simplest choices where the spec is silent
 
 - Spring JDBC and parameterized SQL; Flyway owns the schema. SQL names use snake_case; Java and JSON retain the specified camelCase names.
-- Database-generated numeric IDs; separate ticket sequences start at B0001 (walk-ins) and A0001 (appointments), grow beyond four digits, and do not reset daily. PostgreSQL sequences can have gaps after failed transactions.
+- Database-generated numeric IDs; separate ticket sequences start at B0001 (walk-ins) and A0001 (appointments), grow beyond four digits, and reset at business-day opening. PostgreSQL sequences can have gaps after failed transactions.
 - Creation writes an event with fromStatus null, toStatus CHECKED_IN, and actor KIOSK. Visit version starts at 0.
 - UTC timestamp storage; the front desk displays local browser time.
 - Customer names are Demo Customer 001 through Demo Customer 050. Languages cycle EN/ES/OTHER; every fifth record has veteran=true. These are synthetic values.
 - All resources start FREE and use labels Phone 01, Computer 01, and Station 01, numbered within each type.
 - Plain React with JavaScript, system fonts, npm, and a Vite API proxy. The root URL shows the kiosk.
 - Migration V3 introduced appointment fields and statuses; V4 adds the independent appointment ticket sequence. Prior migrations and existing visit records are preserved. New appointment creation accepts only the three category codes above; legacy category labels remain readable.
-- A selected visit is retained in the `/front-desk?visit=...` URL so identification can be resumed after a refresh. Identifying removes the visit from CHECKED_IN immediately; its panel remains available for routing.
+- A selected visit is retained in the `/front-desk?visit=...` URL so identification can be resumed after a refresh. Identifying changes the row label from Needs ID to Ready to route; the visit remains in the queue and can be resumed.
 - Front-desk mutation failures require reloading the selected visit before retrying. The supervisor, my-queue, and resource-room screens refresh after mutations and failures. Resource-room actions stay disabled until both inventory and waiting-list reloads succeed.
 - Resource-room events use actor RESOURCE_ROOM, appointment events APPOINTMENTS, and front-desk events FRONT_DESK. No schema migration is needed for step 3.
 

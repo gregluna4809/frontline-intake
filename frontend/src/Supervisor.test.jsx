@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Supervisor from './Supervisor.jsx';
-import { appointments, mockQueues, now, ok, staff, rotation } from './testQueues.js';
+import { appointments, mockQueues, now, ok, staff, rotation, businessStatus } from './testQueues.js';
 
 beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(now); });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -19,7 +19,7 @@ test('supervisor groups unassigned and assigned appointments and excludes superv
   expect(within(screen.getByRole('region', { name: 'Demo Staff 001' })).getByText('A0002')).toBeTruthy();
   expect(within(screen.getByRole('region', { name: 'Demo Staff 002' })).getByText('A0003')).toBeTruthy();
   expect(screen.getAllByRole('region').map(region => region.getAttribute('aria-label')))
-    .toEqual(["Today's coverage", 'Unassigned', ...staff.filter(person => person.role === 'LSR').map(person => person.displayName)]);
+    .toEqual(["Business-day coverage", 'Unassigned', ...staff.filter(person => person.role === 'LSR').map(person => person.displayName)]);
   expect(screen.queryByText('Demo Supervisor 001')).toBeNull();
   expect(screen.getByRole('button', { name: 'Assign A0001' }).disabled).toBe(true);
 });
@@ -48,6 +48,7 @@ test('stale assignment blocks retry until refreshed and retry uses the new versi
   let failed = false;
   const fetchMock = vi.fn(async (path, options = {}) => {
     if (path === '/api/staff') return ok(staff);
+    if (path === '/api/business-status') return ok(businessStatus);
     if (path.startsWith('/api/rotation?date=')) return ok(rotation());
     if (path.includes('WAITING_STAFF')) {
       if (failed && !finishRefresh) return new Promise(resolve => { finishRefresh = resolve; });
@@ -97,6 +98,7 @@ test('a failed load reports an unavailable board and manual refresh recovers', a
   let offline = true;
   vi.stubGlobal('fetch', vi.fn(async path => {
     if (offline) throw new Error('Offline');
+    if (path === '/api/business-status') return ok(businessStatus);
     if (path.startsWith('/api/rotation?date=')) return ok(rotation());
     return ok(path === '/api/staff' ? staff : appointments());
   }));
@@ -120,7 +122,7 @@ test('calling out an assigned LSR refreshes coverage and flags appointments unti
   const { fetchMock } = mockQueues();
   render(<Supervisor />);
   const user = userEvent.setup();
-  const coverage = await screen.findByRole('region', { name: "Today's coverage" });
+  const coverage = await screen.findByRole('region', { name: "Business-day coverage" });
   expect(within(coverage).getAllByText('Appointments')).toHaveLength(4);
   expect(within(coverage).queryByText('Demo Supervisor 001')).toBeNull();
   await user.selectOptions(screen.getByRole('combobox', { name: 'Staff for A0001' }), '1');
@@ -132,7 +134,7 @@ test('calling out an assigned LSR refreshes coverage and flags appointments unti
   await user.type(within(form).getByRole('textbox'), 'Demo coverage');
   await user.click(within(form).getByRole('button', { name: 'Save call-out' }));
   const assigned = screen.getByRole('region', { name: 'Demo Staff 001' });
-  await waitFor(() => expect(within(assigned).getAllByText(/Orphaned.*staff on Resource Room today/)).toHaveLength(2));
+  await waitFor(() => expect(within(assigned).getAllByText(/Orphaned.*staff on Resource Room this business day/)).toHaveLength(2));
   expect(within(coverage).getByText('Resource Room')).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledWith('/api/call-outs', expect.objectContaining({
     method: 'POST', body: JSON.stringify({ staffId: 1, date: '2026-09-08', reason: 'Demo coverage' }),
@@ -211,4 +213,21 @@ test('unavailable rotation does not present a usable supervisor board', async ()
   render(<Supervisor />);
   expect(await screen.findByText('Board unavailable.')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Reschedule A0001' })).toBeNull();
+});
+
+
+test('holiday coverage uses the same completed business date as the appointment queue', async () => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-07T16:00:00Z'));
+  const { fetchMock } = mockQueues();
+  const original = fetchMock.getMockImplementation();
+  fetchMock.mockImplementation((path, options) => path === '/api/business-status'
+    ? Promise.resolve(ok({ isOpen: false, currentBusinessDate: '2026-09-04', lastCompletedBusinessDate: '2026-09-04' }))
+    : original(path, options));
+  render(<Supervisor />);
+  const panel = await screen.findByRole('region', { name: 'Business-day coverage' });
+  expect(within(panel).getByText('2026-09-04')).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledWith('/api/rotation?date=2026-09-04', expect.any(Object));
+  expect(fetchMock).toHaveBeenCalledWith('/api/visits?status=WAITING_STAFF&businessDate=2026-09-04', expect.any(Object));
+  expect(screen.getByRole('button', { name: 'Mark called out Demo Staff 001' }).disabled).toBe(true);
+  expect(screen.getByRole('button', { name: 'Reschedule A0001' }).disabled).toBe(false);
 });

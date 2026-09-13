@@ -34,7 +34,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "business.scheduling.enabled=false")
 @AutoConfigureMockMvc
 @Testcontainers
 class VisitApiTest {

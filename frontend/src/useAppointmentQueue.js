@@ -22,13 +22,16 @@ export default function useAppointmentQueue({ includeCoverage = false } = {}) {
     async function load() {
       const currentRevision = revision.current;
       try {
+        const businessStatus = includeCoverage
+          ? await request('/api/business-status', { signal: controller.signal }) : null;
+        const date = businessStatus?.currentBusinessDate || today;
         const [visits, staff, coverage] = await Promise.all([
-          request('/api/visits?status=WAITING_STAFF', { signal: controller.signal }),
+          request('/api/visits?status=WAITING_STAFF' + (includeCoverage ? '&businessDate=' + date : ''), { signal: controller.signal }),
           request('/api/staff', { signal: controller.signal }),
-          includeCoverage ? request('/api/rotation?date=' + today, { signal: controller.signal }) : Promise.resolve([]),
+          includeCoverage ? request('/api/rotation?date=' + date, { signal: controller.signal }) : Promise.resolve([]),
         ]);
         if (active && currentRevision === revision.current && !submitting.current) {
-          setSnapshot({ visits, staff, coverage, date: today });
+          setSnapshot({ visits, staff, coverage, date, businessStatus });
           setQueueError('');
           setNeedsRefresh(false);
         }
@@ -51,7 +54,7 @@ export default function useAppointmentQueue({ includeCoverage = false } = {}) {
   }, []);
 
   async function save(id, path, options, successMessage) {
-    if (submitting.current || needsRefresh || (includeCoverage && snapshot?.date !== today)) return false;
+    if (submitting.current || needsRefresh) return false;
     submitting.current = true;
     revision.current++;
     setPendingId(id);
@@ -83,14 +86,16 @@ export default function useAppointmentQueue({ includeCoverage = false } = {}) {
   }
 
   function markCalledOut(staffId, reason) {
+    if (snapshot?.date !== today) return Promise.resolve(false);
     return save('staff:' + staffId, '/api/call-outs', {
-      method: 'POST', body: JSON.stringify({ staffId, date: today, reason: reason.trim() || null }),
+      method: 'POST', body: JSON.stringify({ staffId, date: snapshot.date, reason: reason.trim() || null }),
     }, () => 'Call-out saved. Refreshing coverage and assigned appointments.');
   }
 
   return {
     snapshot, now, today, queueError, actionError, notice, pendingId,
-    disabled: needsRefresh || pendingId !== null || (includeCoverage && snapshot?.date !== today),
+    disabled: needsRefresh || pendingId !== null,
+    canCallOut: snapshot?.date === today,
     refresh: () => setRefresh(value => value + 1),
     mutate, markCalledOut,
   };
