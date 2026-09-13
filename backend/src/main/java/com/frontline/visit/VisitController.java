@@ -59,6 +59,13 @@ public class VisitController {
         return ResponseEntity.ok().eTag(Long.toString(detail.visit().version())).body(detail);
     }
 
+    @PostMapping("/{id}/report-ftr")
+    public ResponseEntity<VisitService.VisitDetail> reportFtr(
+            @PathVariable long id,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        return response(service.reportFtr(id, expectedVersion(version)));
+    }
+
     @PostMapping("/{id}/close")
     public ResponseEntity<VisitService.VisitDetail> close(
             @PathVariable long id,

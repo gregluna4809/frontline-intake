@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–9 are implemented. No login, app Dockerfile, or deployment configuration is included.
+Steps 1–10 are implemented. No login, app Dockerfile, or deployment configuration is included.
 
 ## Run on Windows PowerShell
 
@@ -142,7 +142,7 @@ Tests disable the live business schedules with `business.scheduling.enabled=fals
 
 Migration V8 adds `business_day_snapshot` (immutable JSON payload per date), `business_day_rollover` (once-per-day reset marker), and `resource.active_visit_id` (current ownership). It backfills ownership for existing occupied resources and replaces the old unique index on AT_RESOURCE visits, since historical visits now retain that status even after their resource is reused. Flyway applies this migration on backend startup; tests apply it only to disposable containers.
 
-The existing 8:30am Eastern business-day ticket-reset trigger also clears every resource to FREE and removes current ownership. It does not alter any old visit's status, version, resourceId, or events. Repeated or competing resets cannot clear resources already assigned after that opening. The first visit mutation can catch up if opening was missed while the backend was stopped. Closing or marking an old visit Left releases a resource only if that visit still owns it, so a new occupant is protected.
+The existing 8:30am Eastern business-day ticket-reset trigger also clears every resource to FREE and removes current ownership. The resource reset itself does not alter old visit records; Step 10 separately closes eligible missed appointments before resources are cleared. Repeated or competing resets cannot clear resources already assigned after that opening. The first visit mutation can catch up if opening was missed while the backend was stopped. Closing or marking an old visit Left releases a resource only if that visit still owns it, so a new occupant is protected.
 
 `GET /api/snapshot?date=YYYY-MM-DD` returns `{ businessDate, visits, resources, staff, coverage, callOuts }`. Visits include all final statuses and customer attachments; resources include occupancy and occupant metadata; coverage resolves the rotation and call-outs for that date. Omitting date selects lastCompletedBusinessDate. Invalid dates, weekends/holidays, and days that have not completed return 400. A completed day without visits has an empty visits array.
 
@@ -151,6 +151,18 @@ The minute schedule saves completed activity, including at 4:45pm Eastern. Captu
 After hours, all five routes use a shared read-only snapshot rendering. Kiosk and Front desk show final visits, Supervisor shows final appointments and coverage, My Queue shows the selected staff's final appointments, and Resource room shows final walk-ins and resource occupancy. A persistent banner names the frozen date. No mutation controls or simulator controls are rendered. Role navigation uses staff saved in the snapshot. Each closed period loads its snapshot once; live queue, inventory, and coverage polling stop. Only business-status polling continues every five seconds so the existing live screens return automatically at opening. Status or snapshot failures never fall back to an interactive screen.
 
 Regression tests cover rollover without visit changes, migration ownership backfill, old-visit closing after resource reuse, repeated/concurrent resets, default and explicit snapshot dates, immutable snapshots after subsequent changes, missed schedules, all five closed routes, stopped live polling, and return to interactive mode.
+
+## Step 10: automatic FTR detection
+
+At business-day opening, rollover runs in this order: preserve completed-day snapshots, detect missed appointments, clear resource ownership and availability, then reset ticket sequences. It uses the existing 8:30am Eastern business-day trigger and once-per-day rollover marker, including the existing catch-up path when the first mutation follows a missed opening. Holidays and weekends do not trigger FTR processing.
+
+Eligible visits are APPOINTMENT visits with appointmentStatus SCHEDULED, businessDate earlier than the opening business date, and status other than CLOSED or LEFT. Each becomes NOT_ATTENDED_FTR and CLOSED, receives closedAt, increments version once, and records a SYSTEM event with the previous visit status and an automatic-FTR note. Customer, classification, and assignment history are retained. RESCHEDULED appointments, completed visits, walk-ins, and current/future business dates are untouched. The updates, events, and rollover marker commit together; a failure rolls everything back for retry. Previously saved snapshots continue to show the actual closing state before next-day FTR processing.
+
+Visit detail and identify responses now include `missedAppointment`: the customer's most recent other appointment if its status is NOT_ATTENDED_FTR, otherwise null. Recency uses createdAt descending, then ID descending. The current visit is excluded so identifying a returning appointment does not hide its own prior history; subsequent walk-ins do not supersede appointment history. A newer appointment, including one already FTR_REPORTED, supersedes an older FTR. Unattached or different customers do not inherit the notice. The front-desk panel displays "Customer has a missed appointment (FTR)" with the missed ticket and business date, including when a selected visit is resumed or reloaded.
+
+`POST /api/visits/{id}/report-ftr` takes no body and requires the current quoted If-Match version. It changes NOT_ATTENDED_FTR to FTR_REPORTED, increments version, and records an APPOINTMENTS event noting customer contact. It preserves the visit's status, closedAt, and assignments. The response is the updated visit detail with its ETag. Wrong starting appointment status returns 409; missing, malformed, and stale versions return 428, 400, and 412 respectively; an unknown visit returns 404. Rejections and event failures leave visit state and events unchanged. Reporting contact uses this endpoint; the front-desk addition is a notice, with no automatic reporting when a customer is identified.
+
+No migration is required: the existing appointment-status enum and database check already include both FTR values. Tests cover eligibility exclusions, one-time rollover and snapshot preservation, FTR/contact event rollback, request preconditions, concurrent reports, customer-history selection, and front-desk notice visibility and reload behavior.
 
 ## Simplest choices where the spec is silent
 

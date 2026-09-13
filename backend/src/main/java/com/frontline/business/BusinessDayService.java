@@ -64,6 +64,8 @@ public class BusinessDayService {
                 ON CONFLICT DO NOTHING
                 """).param("date", date).update();
         if (inserted == 1) {
+            // Preserve closing snapshots first, then detect FTR before resources/tickets reset.
+            visits.closeMissedAppointments(date);
             jdbc.sql("UPDATE resource SET status = 'FREE', active_visit_id = NULL").update();
         }
     }

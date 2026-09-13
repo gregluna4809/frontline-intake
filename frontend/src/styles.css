@@ -168,3 +168,5 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .snapshot-table th, .snapshot-table td { padding: 12px; border-bottom: 1px solid #dce3e8; }
 .snapshot-resources { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
 .snapshot-resources li { display: grid; gap: 8px; border: 1px solid #dce3e8; border-radius: 8px; padding: 16px; }
+
+.ftr-notice { padding: 14px; border-left: 4px solid #a76b08; background: #fff0ca; color: #593e0d; border-radius: 4px; }

@@ -161,6 +161,18 @@ public class VisitService {
         return describe(updated);
     }
 
+    @Transactional
+    public VisitDetail reportFtr(long id, long expectedVersion) {
+        Visit previous = requireVersion(id, expectedVersion);
+        if (previous.appointmentStatus() != Visit.AppointmentStatus.NOT_ATTENDED_FTR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reporting FTR requires NOT_ATTENDED_FTR.");
+        }
+        Visit updated = repository.reportFtr(previous).orElseThrow(this::staleVersion);
+        repository.recordTransition(previous, updated,
+                "Customer made contact: NOT_ATTENDED_FTR -> FTR_REPORTED.", "APPOINTMENTS");
+        return describe(updated);
+    }
+
     private VisitDetail finish(Visit previous, Visit.Status next) {
         return finish(previous, next, null);
     }
@@ -213,10 +225,15 @@ public class VisitService {
     private VisitDetail describe(Visit visit) {
         Customer customer = visit.customerId() == null ? null : customers.findById(visit.customerId()).orElse(null);
         Resource resource = visit.resourceId() == null ? null : resources.findById(visit.resourceId()).orElse(null);
-        return new VisitDetail(visit, repository.findEvents(visit.id()), customer, resource, visit.requiredResourceType());
+        Visit missedAppointment = customer == null ? null : repository.latestOtherAppointment(customer.id(), visit.id())
+                .filter(appointment -> appointment.appointmentStatus() == Visit.AppointmentStatus.NOT_ATTENDED_FTR)
+                .orElse(null);
+        return new VisitDetail(visit, repository.findEvents(visit.id()), customer, resource,
+                visit.requiredResourceType(), missedAppointment);
     }
 
     public record VisitDetail(
-            Visit visit, List<VisitEvent> events, Customer customer, Resource resource, Resource.Type requiredResourceType
+            Visit visit, List<VisitEvent> events, Customer customer, Resource resource, Resource.Type requiredResourceType,
+            Visit missedAppointment
     ) {}
 }

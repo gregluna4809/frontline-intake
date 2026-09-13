@@ -146,6 +146,14 @@ public class VisitRepository {
     }
 
     public void recordTransition(Visit previous, Visit updated, String note) {
+        recordTransition(previous, updated, note, switch (previous.status()) {
+            case WAITING_STAFF -> "APPOINTMENTS";
+            case AT_RESOURCE, WAITING_RESOURCE -> "RESOURCE_ROOM";
+            default -> "FRONT_DESK";
+        });
+    }
+
+    public void recordTransition(Visit previous, Visit updated, String note, String actor) {
         jdbc.sql("""
                 INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
                 VALUES (:visitId, :fromStatus, :toStatus, :actor, CURRENT_TIMESTAMP, :note)
@@ -154,11 +162,7 @@ public class VisitRepository {
                 .param("note", note, Types.VARCHAR)
                 .param("fromStatus", previous.status().name())
                 .param("toStatus", updated.status().name())
-                .param("actor", switch (previous.status()) {
-                    case WAITING_STAFF -> "APPOINTMENTS";
-                    case AT_RESOURCE, WAITING_RESOURCE -> "RESOURCE_ROOM";
-                    default -> "FRONT_DESK";
-                })
+                .param("actor", actor)
                 .update();
     }
 
@@ -169,6 +173,45 @@ public class VisitRepository {
                 ? "Assigned staff ID: " + updated.assignedStaffId() + "."
                 : "Reassigned staff from ID: " + previous.assignedStaffId()
                     + " to ID: " + updated.assignedStaffId() + ".";
+    }
+
+    public void closeMissedAppointments(LocalDate businessDate) {
+        // Capture the previous status for each event in the same SQL statement.
+        jdbc.sql("""
+                WITH candidates AS (
+                    SELECT id, status FROM visit
+                    WHERE visit_type = 'APPOINTMENT' AND appointment_status = 'SCHEDULED'
+                      AND business_date < :businessDate AND status NOT IN ('CLOSED', 'LEFT')
+                    FOR UPDATE
+                ), updated AS (
+                    UPDATE visit v SET appointment_status = 'NOT_ATTENDED_FTR', status = 'CLOSED',
+                        closed_at = CURRENT_TIMESTAMP, version = v.version + 1
+                    FROM candidates c WHERE v.id = c.id
+                    RETURNING v.id, c.status AS previous_status
+                )
+                INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
+                SELECT id, previous_status, 'CLOSED', 'SYSTEM', CURRENT_TIMESTAMP,
+                    'Automatic FTR at business-day rollover: SCHEDULED -> NOT_ATTENDED_FTR.'
+                FROM updated
+                """).param("businessDate", businessDate).update();
+    }
+
+    public Optional<Visit> reportFtr(Visit previous) {
+        return jdbc.sql("""
+                UPDATE visit SET appointment_status = 'FTR_REPORTED', version = version + 1
+                WHERE id = :id AND version = :version AND appointment_status = 'NOT_ATTENDED_FTR'
+                RETURNING *
+                """).param("id", previous.id()).param("version", previous.version())
+                .query(this::mapVisit).optional();
+    }
+
+    public Optional<Visit> latestOtherAppointment(long customerId, long currentVisitId) {
+        return jdbc.sql("""
+                SELECT * FROM visit WHERE customer_id = :customerId AND id <> :currentVisitId
+                    AND visit_type = 'APPOINTMENT'
+                ORDER BY created_at DESC, id DESC LIMIT 1
+                """).param("customerId", customerId).param("currentVisitId", currentVisitId)
+                .query(this::mapVisit).optional();
     }
 
     public Optional<Visit> findById(long id) {

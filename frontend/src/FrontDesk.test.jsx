@@ -24,7 +24,7 @@ function initialDetail(overrides = {}) {
 const customer = { id: 1, displayName: 'Demo Customer 001' };
 const ok = data => ({ ok: true, json: async () => data });
 
-function mockWorkflow({ finalStatus = 'AT_RESOURCE', appointment = false, failRoute = false } = {}) {
+function mockWorkflow({ finalStatus = 'AT_RESOURCE', appointment = false, failRoute = false, missedAppointment = null } = {}) {
   let detail = initialDetail(appointment ? {
     visitType: 'APPOINTMENT', reason: null, appointmentCategory: 'Reemployment Appointment',
   } : {});
@@ -36,7 +36,7 @@ function mockWorkflow({ finalStatus = 'AT_RESOURCE', appointment = false, failRo
     if (path === '/api/visits/1') return ok(detail);
     if (path.startsWith('/api/customers?q=')) return ok([customer]);
     if (path === '/api/visits/1/identify') {
-      detail = { ...detail, customer, visit: { ...detail.visit, customerId: 1, status: 'IDENTIFIED', version: 1 } };
+      detail = { ...detail, customer, missedAppointment, visit: { ...detail.visit, customerId: 1, status: 'IDENTIFIED', version: 1 } };
       return ok(detail);
     }
     if (path === '/api/visits/1/route') {
@@ -187,4 +187,37 @@ test('identified visit remains in creation order and can be resumed after select
   expect(fetchMock).toHaveBeenCalledWith('/api/visits/1/route', expect.objectContaining({
     method: 'POST', headers: expect.objectContaining({ 'If-Match': '"1"' }),
   }));
+});
+
+
+test('identifying an FTR return shows the missed appointment and preserves normal routing', async () => {
+  mockWorkflow({ missedAppointment: { id: 90, ticket: 'A0090', businessDate: '2026-09-04', appointmentStatus: 'NOT_ATTENDED_FTR' } });
+  render(<FrontDesk />);
+  expect(screen.queryByText('Customer has a missed appointment (FTR).')).toBeNull();
+  const user = userEvent.setup();
+  await identify(user);
+  expect(screen.getByText('Customer has a missed appointment (FTR).')).toBeTruthy();
+  expect(screen.getByText('Ticket A0090 from 2026-09-04.')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Route' }));
+  expect(await screen.findByText('Assigned to Phone 01')).toBeTruthy();
+});
+
+test('identifying a customer without current FTR history shows no missed appointment notice', async () => {
+  mockWorkflow();
+  render(<FrontDesk />);
+  await identify(userEvent.setup());
+  expect(screen.queryByText('Customer has a missed appointment (FTR).')).toBeNull();
+});
+
+test('resuming an identified visit shows FTR history and reload removes a reported FTR', async () => {
+  window.history.replaceState({}, '', '/front-desk?visit=1');
+  let detail = { ...initialDetail({ status: 'IDENTIFIED', customerId: 1, version: 1 }), customer,
+    missedAppointment: { id: 90, ticket: 'A0090', businessDate: '2026-09-04' } };
+  vi.stubGlobal('fetch', vi.fn(async path => ok(path === '/api/visits/1' ? detail : [])));
+  render(<FrontDesk />);
+  expect(await screen.findByText('Customer has a missed appointment (FTR).')).toBeTruthy();
+  detail = { ...detail, missedAppointment: null };
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Reload visit' }));
+  await waitFor(() => expect(screen.queryByText('Customer has a missed appointment (FTR).')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Route' }).disabled).toBe(false);
 });

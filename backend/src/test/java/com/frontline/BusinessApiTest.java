@@ -103,6 +103,7 @@ class BusinessApiTest {
     @Test
     void queuesDefaultToBusinessDateAndAllowExplicitHistory() throws Exception {
         Visit old = appointment();
+        jdbc.update("UPDATE visit SET appointment_status = 'RESCHEDULED' WHERE id = ?", old.id());
         at("2026-09-15T16:00:00Z");
         Visit current = appointment();
         for (String path : List.of("/api/visits", "/api/visits?status=WAITING_STAFF")) {
@@ -139,6 +140,7 @@ class BusinessApiTest {
     @Test
     void rescheduledReplacementUsesNewBusinessDate() {
         Visit old = appointment();
+        jdbc.update("UPDATE visit SET appointment_status = 'RESCHEDULED' WHERE id = ?", old.id());
         at("2026-09-15T16:00:00Z");
         var result = visits.reschedule(old.id(), old.version());
         assertThat(result.closedVisit().visit().businessDate()).isEqualTo(LocalDate.parse("2026-09-14"));

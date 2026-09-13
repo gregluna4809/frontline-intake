@@ -134,6 +134,10 @@ function VisitPanel({ visitId, onChanged }) {
               )}
             </div>
           )}
+          {detail.missedAppointment && <p role="status" className="ftr-notice">
+            <strong>Customer has a missed appointment (FTR).</strong><br />
+            Ticket {detail.missedAppointment.ticket} from {detail.missedAppointment.businessDate}.
+          </p>}
           {message && <p role="status" className="routing-result">{message}</p>}
           <button className="primary route-button"
             disabled={detail.visit.status !== 'IDENTIFIED' || pending || needsReload}
