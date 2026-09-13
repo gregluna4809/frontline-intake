@@ -30,8 +30,8 @@ function mockWorkflow({ finalStatus = 'AT_RESOURCE', appointment = false, failRo
   } : {});
   let routeFailed = false;
   const mock = vi.fn(async (path, options = {}) => {
-    if (path === '/api/visits?status=CHECKED_IN') {
-      return ok(detail.visit.status === 'CHECKED_IN' ? [detail.visit] : []);
+    if (path.startsWith('/api/visits?status=')) {
+      return ok(detail.visit.status === path.split('=')[1] ? [detail.visit] : []);
     }
     if (path === '/api/visits/1') return ok(detail);
     if (path.startsWith('/api/customers?q=')) return ok([customer]);
@@ -78,7 +78,7 @@ test.each([
   render(<FrontDesk />);
   const user = userEvent.setup();
   await identify(user);
-  if (appointment) expect(screen.getByText('Reemployment Appointment')).toBeTruthy();
+  if (appointment) expect(within(screen.getByRole('complementary')).getByText('Reemployment Appointment')).toBeTruthy();
   await user.click(screen.getByRole('button', { name: 'Route' }));
   expect(await screen.findByText(message)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'B0001' })).toBeNull();
@@ -103,7 +103,7 @@ test('stale mutation requires reloading and retry uses the new version', async (
   await waitFor(() => expect(screen.getByRole('button', { name: 'Route' }).disabled).toBe(false));
   await user.click(screen.getByRole('button', { name: 'Route' }));
   expect(await screen.findByText('Assigned to Phone 01')).toBeTruthy();
-  expect(fetchMock).toHaveBeenLastCalledWith('/api/visits?status=CHECKED_IN', expect.any(Object));
+  expect(fetchMock).toHaveBeenLastCalledWith('/api/visits?status=IDENTIFIED', expect.any(Object));
   const mutations = fetchMock.mock.calls.filter(([path]) => path === '/api/visits/1/route');
   expect(mutations.map(([, options]) => options.headers['If-Match'])).toEqual(['"1"', '"2"']);
 });
@@ -138,4 +138,53 @@ test('late customer search response cannot replace the newer results', async () 
   expect(await screen.findByRole('button', { name: /Demo Customer 002/ })).toBeTruthy();
   finishOldSearch(ok([customer]));
   await waitFor(() => expect(screen.queryByRole('button', { name: /Demo Customer 001/ })).toBeNull());
+});
+
+
+test('identified visit remains in creation order and can be resumed after selecting another visit', async () => {
+  let first = initialDetail();
+  const second = initialDetail({ id: 2, ticket: 'B0002', createdAt: '2026-09-08T12:01:00Z' });
+  const fetchMock = vi.fn(async (path, options = {}) => {
+    if (path.startsWith('/api/visits?status=')) {
+      return ok([first.visit, second.visit].filter(visit => visit.status === path.split('=')[1]));
+    }
+    if (path === '/api/visits/1') return ok(first);
+    if (path === '/api/visits/2') return ok(second);
+    if (path.startsWith('/api/customers?q=')) return ok([customer]);
+    if (path === '/api/visits/1/identify') {
+      first = { ...first, customer, visit: { ...first.visit, customerId: 1, status: 'IDENTIFIED', version: 1 } };
+      return ok(first);
+    }
+    if (path === '/api/visits/1/route') {
+      expect(options.headers['If-Match']).toBe('"1"');
+      first = { ...first, resource: { id: 1, label: 'Phone 01' },
+        visit: { ...first.visit, resourceId: 1, status: 'AT_RESOURCE', version: 2 } };
+      return ok(first);
+    }
+    throw new Error('Unexpected request: ' + path);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<FrontDesk />);
+  const user = userEvent.setup();
+  expect(within((await screen.findByRole('button', { name: 'B0001' })).closest('tr')).getByText('Needs ID')).toBeTruthy();
+  await identify(user);
+  await user.click(screen.getByRole('button', { name: 'B0002' }));
+  expect(await screen.findByRole('heading', { name: 'Ticket B0002' })).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Refresh queue' }));
+  await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path.endsWith('status=IDENTIFIED')).length).toBeGreaterThanOrEqual(3));
+  expect(within(screen.getByRole('table')).getAllByRole('button').map(button => button.textContent))
+    .toEqual(['B0001', 'B0002']);
+  expect(within(screen.getByRole('button', { name: 'B0001' }).closest('tr')).getByText('Ready to route')).toBeTruthy();
+  expect(within(screen.getByRole('button', { name: 'B0002' }).closest('tr')).getByText('Needs ID')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'B0001' }));
+  expect(await screen.findByText('Demo Customer 001')).toBeTruthy();
+  expect(screen.getByText('ID: 1')).toBeTruthy();
+  expect(screen.queryByRole('searchbox')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Route' }));
+  expect(await screen.findByText('Assigned to Phone 01')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'B0001' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'B0002' })).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledWith('/api/visits/1/route', expect.objectContaining({
+    method: 'POST', headers: expect.objectContaining({ 'If-Match': '"1"' }),
+  }));
 });

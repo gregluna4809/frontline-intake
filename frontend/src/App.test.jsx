@@ -63,7 +63,7 @@ test('front desk loads checked-in visits with their original reason', async () =
       status: 'CHECKED_IN', createdAt: '2026-09-08T12:00:00Z',
     }],
   });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/staff'
+  vi.stubGlobal('fetch', (path, options) => (path === '/api/staff' || path === '/api/visits?status=IDENTIFIED')
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
   expect(await screen.findByText('B0001')).toBeTruthy();
@@ -78,12 +78,12 @@ test('front desk reports a failed queue load and can refresh successfully', asyn
   const fetchMock = vi.fn()
     .mockResolvedValueOnce({ ok: false, json: async () => ({ detail: 'Queue unavailable.' }) })
     .mockResolvedValueOnce({ ok: true, json: async () => [] });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/staff'
+  vi.stubGlobal('fetch', (path, options) => (path === '/api/staff' || path === '/api/visits?status=IDENTIFIED')
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
   expect(await screen.findByRole('alert')).toBeTruthy();
   await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh queue' }));
-  expect(await screen.findByText(/No checked-in visits yet/)).toBeTruthy();
+  expect(await screen.findByText(/No visits waiting at the front desk/)).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
 });
 test.each([

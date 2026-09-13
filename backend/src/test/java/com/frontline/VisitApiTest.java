@@ -813,6 +813,27 @@ class VisitApiTest {
         assertThat(service.detail(visit.id()).visit().assignedStaffId()).isEqualTo(2);
     }
 
+    @ParameterizedTest
+    @CsvSource({"false", "true"})
+    void staffAssignmentRejectsSupervisorWithoutChangingVisitOrEvents(boolean alreadyAssigned) throws Exception {
+        Visit visit = waitingStaff();
+        if (alreadyAssigned) service.assignStaff(visit.id(), 1, visit.version());
+        var before = service.detail(visit.id());
+        Long supervisorId = jdbc.queryForObject(
+                "SELECT id FROM staff WHERE role = 'SUPERVISING_LSR'", Long.class);
+
+        mvc.perform(post("/api/visits/{id}/assign-staff", visit.id())
+                        .header("If-Match", "\"" + before.visit().version() + "\"")
+                        .contentType("application/json").content("{\"staffId\":" + supervisorId + "}"))
+                .andExpect(status().isConflict());
+
+        var after = service.detail(visit.id());
+        assertThat(after.visit().assignedStaffId()).isEqualTo(before.visit().assignedStaffId());
+        assertThat(after.visit().version()).isEqualTo(before.visit().version());
+        assertThat(after.visit()).isEqualTo(before.visit());
+        assertThat(after.events()).containsExactlyElementsOf(before.events());
+    }
+
     @Test
     void staffAssignmentRequiresVersionValidStaffAndBody() throws Exception {
         Visit visit = waitingStaff();

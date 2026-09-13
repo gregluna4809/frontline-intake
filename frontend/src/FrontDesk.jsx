@@ -162,7 +162,12 @@ export default function FrontDesk() {
     const controller = new AbortController();
     async function load() {
       try {
-        const data = await request('/api/visits?status=CHECKED_IN', { signal: controller.signal });
+        const [checkedIn, identified] = await Promise.all([
+          request('/api/visits?status=CHECKED_IN', { signal: controller.signal }),
+          request('/api/visits?status=IDENTIFIED', { signal: controller.signal }),
+        ]);
+        const data = [...new Map([...checkedIn, ...identified].map(visit => [visit.id, visit])).values()]
+          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a.id - b.id);
         if (active) { setVisits(data); setError(''); }
       } catch (failure) {
         if (active) setError(failure.message);
@@ -180,7 +185,9 @@ export default function FrontDesk() {
   }
 
   function visitChanged(visit) {
-    if (visit.status !== 'CHECKED_IN') {
+    if (visit.status === 'CHECKED_IN' || visit.status === 'IDENTIFIED') {
+      setVisits(current => current.map(item => item.id === visit.id ? visit : item));
+    } else {
       setVisits(current => current.filter(item => item.id !== visit.id));
     }
     setRefresh(value => value + 1);
@@ -191,7 +198,7 @@ export default function FrontDesk() {
       <div className="section-heading">
         <div>
           <span className="eyebrow">Front desk</span>
-          <h1>Checked-in queue</h1>
+          <h1>Front-desk queue</h1>
           <p className="intro">Select a visit, attach a customer, and route to the next destination.</p>
         </div>
         <button className="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh queue</button>
@@ -202,13 +209,14 @@ export default function FrontDesk() {
           <div className="queue-panel" aria-busy={loading}>
             <div className="queue-heading"><h2>Waiting at the front desk</h2><span className="count">{visits.length}</span></div>
             {loading ? <p role="status" className="empty">Loading visits…</p> :
-              visits.length === 0 ? <p className="empty">{error ? 'Queue unavailable.' : 'No checked-in visits yet. New kiosk check-ins will appear here.'}</p> :
+              visits.length === 0 ? <p className="empty">{error ? 'Queue unavailable.' : 'No visits waiting at the front desk. New kiosk check-ins will appear here.'}</p> :
               <div className="table-scroll">
                 <table>
-                  <thead><tr><th>Ticket</th><th>Reason / category</th><th>Checked in</th></tr></thead>
+                  <thead><tr><th>Ticket</th><th>Status</th><th>Reason / category</th><th>Checked in</th></tr></thead>
                   <tbody>{visits.map(visit => (
                     <tr key={visit.id} className={selectedId === String(visit.id) ? 'selected-row' : ''}>
                       <td><button className="ticket-link" onClick={() => selectVisit(visit)}>{visit.ticket}</button></td>
+                      <td><small>{visit.status === 'IDENTIFIED' ? 'Ready to route' : 'Needs ID'}</small></td>
                       <td>{purpose(visit)}</td>
                       <td>{new Date(visit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                     </tr>

@@ -3,6 +3,7 @@ package com.frontline.visit;
 import com.frontline.customer.CustomerRepository;
 import com.frontline.model.Customer;
 import com.frontline.model.Resource;
+import com.frontline.model.Staff;
 import com.frontline.model.Visit;
 import com.frontline.model.VisitEvent;
 import com.frontline.resource.ResourceRepository;
@@ -117,8 +118,11 @@ public class VisitService {
     @Transactional
     public VisitDetail assignStaff(long id, long staffId, long expectedVersion) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
-        staff.findById(staffId)
+        Staff target = staff.findById(staffId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff not found."));
+        if (target.role() != Staff.Role.LSR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Visits can only be assigned to an LSR.");
+        }
         Visit updated = repository.assignStaff(previous, staffId).orElseThrow(this::staleVersion);
         repository.recordTransition(previous, updated);
         return describe(updated);
