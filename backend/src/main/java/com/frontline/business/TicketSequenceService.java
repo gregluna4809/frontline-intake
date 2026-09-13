@@ -9,14 +9,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class TicketSequenceService {
     private final JdbcClient jdbc;
     private final BusinessCalendar calendar;
+    private final BusinessDayService days;
 
-    public TicketSequenceService(JdbcClient jdbc, BusinessCalendar calendar) {
+    public TicketSequenceService(JdbcClient jdbc, BusinessCalendar calendar, BusinessDayService days) {
         this.jdbc = jdbc;
         this.calendar = calendar;
+        this.days = days;
     }
 
     @Transactional
     public LocalDate prepareForCreation() {
+        days.resetResourcesForOpening();
         lockSequences();
         LocalDate date = calendar.currentBusinessDate();
         // Catch up after downtime and cover arrivals racing the opening cron.
@@ -30,6 +33,7 @@ public class TicketSequenceService {
 
     @Transactional
     public void resetForOpening() {
+        days.resetResourcesForOpening();
         lockSequences();
         var status = calendar.status();
         // Never rewind numbers that have already been issued for this business day.

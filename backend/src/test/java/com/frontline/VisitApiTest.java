@@ -49,7 +49,12 @@ class VisitApiTest {
 
     @BeforeEach
     void clearVisits() {
-        jdbc.execute("TRUNCATE visit_event, visit RESTART IDENTITY");
+        jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM visit_event");
+        jdbc.execute("DELETE FROM visit");
+        jdbc.execute("ALTER TABLE visit ALTER COLUMN id RESTART WITH 1");
+        jdbc.execute("ALTER TABLE visit_event ALTER COLUMN id RESTART WITH 1");
+        jdbc.execute("TRUNCATE call_out, business_day_snapshot, business_day_rollover RESTART IDENTITY");
         jdbc.execute("ALTER SEQUENCE visit_ticket_sequence RESTART WITH 1");
         jdbc.execute("ALTER SEQUENCE appointment_ticket_sequence RESTART WITH 1");
         jdbc.execute("UPDATE resource SET status = 'FREE'");

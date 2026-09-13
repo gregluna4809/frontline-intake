@@ -43,10 +43,17 @@ class BusinessApiTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired VisitService visits;
     @Autowired TicketSequenceService tickets;
+    @Autowired com.frontline.business.BusinessDayService days;
+    @Autowired com.frontline.coverage.CoverageService coverage;
 
     @BeforeEach
     void clearVisits() {
-        jdbc.execute("TRUNCATE visit_event, visit RESTART IDENTITY");
+        jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM visit_event");
+        jdbc.execute("DELETE FROM visit");
+        jdbc.execute("ALTER TABLE visit ALTER COLUMN id RESTART WITH 1");
+        jdbc.execute("ALTER TABLE visit_event ALTER COLUMN id RESTART WITH 1");
+        jdbc.execute("TRUNCATE call_out, business_day_snapshot, business_day_rollover RESTART IDENTITY");
         jdbc.execute("ALTER SEQUENCE visit_ticket_sequence RESTART WITH 1");
         jdbc.execute("ALTER SEQUENCE appointment_ticket_sequence RESTART WITH 1");
         jdbc.execute("UPDATE resource SET status = 'FREE'");
@@ -113,7 +120,7 @@ class BusinessApiTest {
     }
 
     @Test
-    void inventoryScopesVisitDetailsWithoutFreeingPriorDayResources() throws Exception {
+    void inventoryShowsReusedResourceForTheNewBusinessDay() throws Exception {
         Visit old = walkIn();
         visits.identify(old.id(), 1, 0);
         visits.route(old.id(), 1);
@@ -123,18 +130,10 @@ class BusinessApiTest {
         visits.route(current.id(), 1);
         mvc.perform(get("/api/resources")).andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.label == 'Phone 01')].visitId")
-                        .value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())))
-                .andExpect(jsonPath("$[?(@.label == 'Phone 01')].status")
-                        .value(org.hamcrest.Matchers.contains("OCCUPIED")))
-                .andExpect(jsonPath("$[?(@.label == 'Phone 02')].visitId")
                         .value(org.hamcrest.Matchers.contains((int) current.id())));
-        mvc.perform(get("/api/resources").param("businessDate", "2026-09-14"))
-                .andExpect(jsonPath("$[?(@.label == 'Phone 01')].visitId")
-                        .value(org.hamcrest.Matchers.contains((int) old.id())))
-                .andExpect(jsonPath("$[?(@.label == 'Phone 02')].visitId")
-                        .value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())));
+        assertThat(visits.detail(old.id()).visit().status()).isEqualTo(Visit.Status.AT_RESOURCE);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE status = 'OCCUPIED'", Integer.class))
-                .isEqualTo(2);
+                .isEqualTo(1);
     }
 
     @Test
@@ -211,4 +210,142 @@ class BusinessApiTest {
         assertThatThrownBy(() -> jdbc.update("UPDATE step8_upgrade.visit SET business_date = NULL"))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
+    private Visit occupied() {
+        Visit visit = walkIn();
+        visits.identify(visit.id(), 1, 0);
+        return visits.route(visit.id(), 1).visit();
+    }
+
+    @Test
+    void openingFreesEveryResourceWithoutChangingOldVisitAndRunsOnlyOnce() {
+        Visit old = occupied();
+        jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'COMPUTER'");
+        var events = visits.detail(old.id()).events();
+        at("2026-09-15T12:29:00Z");
+        tickets.resetForOpening();
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, old.resourceId()))
+                .isEqualTo("OCCUPIED");
+        at("2026-09-15T12:30:00Z");
+        tickets.resetForOpening();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE status <> 'FREE'", Integer.class)).isZero();
+        assertThat(visits.detail(old.id()).visit()).isEqualTo(old);
+        assertThat(visits.detail(old.id()).events()).isEqualTo(events);
+        Visit current = occupied();
+        assertThat(current.resourceId()).isEqualTo(old.resourceId());
+        tickets.resetForOpening();
+        assertThat(jdbc.queryForObject("SELECT active_visit_id FROM resource WHERE id = ?", Long.class, current.resourceId()))
+                .isEqualTo(current.id());
+        visits.close(old.id(), old.version());
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, current.resourceId()))
+                .isEqualTo("OCCUPIED");
+        visits.close(current.id(), current.version());
+        assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, current.resourceId()))
+                .isEqualTo("FREE");
+    }
+
+    @Test
+    void snapshotDefaultsToCompletedDayAndRemainsFrozenAcrossMutationsAndRollover() throws Exception {
+        Visit old = occupied();
+        Visit completed = appointment();
+        visits.close(completed.id(), completed.version());
+        coverage.callOut(2, LocalDate.parse("2026-09-14"), "Synthetic coverage note");
+        at("2026-09-14T20:45:00Z");
+        String snapshot = mvc.perform(get("/api/snapshot")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessDate").value("2026-09-14"))
+                .andExpect(jsonPath("$.visits.length()").value(2))
+                .andExpect(jsonPath("$.visits[0].status").value("AT_RESOURCE"))
+                .andExpect(jsonPath("$.visits[1].status").value("CLOSED"))
+                .andExpect(jsonPath("$.resources[?(@.label == 'Phone 01')].status")
+                        .value(org.hamcrest.Matchers.contains("OCCUPIED")))
+                .andExpect(jsonPath("$.staff.length()").value(5))
+                .andExpect(jsonPath("$.coverage[?(@.staffId == 2)].dutyType")
+                        .value(org.hamcrest.Matchers.contains("RESOURCE_ROOM")))
+                .andExpect(jsonPath("$.callOuts[0].reason").value("Synthetic coverage note"))
+                .andReturn().getResponse().getContentAsString();
+        visits.close(old.id(), old.version());
+        coverage.callOut(2, LocalDate.parse("2026-09-14"), "Changed after close");
+        walkIn();
+        at("2026-09-15T12:30:00Z");
+        tickets.resetForOpening();
+        occupied();
+        mvc.perform(get("/api/snapshot").param("date", "2026-09-14"))
+                .andExpect(status().isOk()).andExpect(content().json(snapshot));
+        mvc.perform(get("/api/snapshot")).andExpect(content().json(snapshot));
+        at("2026-09-15T20:45:00Z");
+        mvc.perform(get("/api/snapshot")).andExpect(jsonPath("$.businessDate").value("2026-09-15"))
+                .andExpect(jsonPath("$.visits.length()").value(1));
+    }
+
+    @Test
+    void firstAfterHoursMutationFreezesBeforeChangingVisitEvenWithoutScheduledCapture() {
+        Visit old = occupied();
+        at("2026-09-14T20:45:00Z");
+        visits.left(old.id(), old.version());
+        var snapshot = days.snapshot(null);
+        assertThat(snapshot.path("visits").get(0).path("status").asText()).isEqualTo("AT_RESOURCE");
+        assertThat(visits.detail(old.id()).visit().status()).isEqualTo(Visit.Status.LEFT);
+    }
+
+    @Test
+    void firstArrivalAfterMissedOpeningCapturesOldOccupancyBeforeReset() {
+        Visit old = occupied();
+        at("2026-09-15T12:30:00Z");
+        Visit current = occupied();
+        var snapshot = days.snapshot(LocalDate.parse("2026-09-14"));
+        assertThat(snapshot.path("visits").get(0).path("id").asLong()).isEqualTo(old.id());
+        assertThat(snapshot.path("resources").findValuesAsText("ticket")).contains(old.ticket());
+        assertThat(current.resourceId()).isEqualTo(old.resourceId());
+        assertThat(visits.detail(old.id()).visit()).isEqualTo(old);
+    }
+
+    @Test
+    void snapshotValidatesDatesAndSupportsDaysWithoutVisits() throws Exception {
+        mvc.perform(get("/api/snapshot").param("date", "2026-09-10"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.visits.length()").value(0))
+                .andExpect(jsonPath("$.resources.length()").value(16));
+        for (String date : List.of("bad", "2026-09-14", "2026-09-15", "2026-09-13", "2026-09-07")) {
+            mvc.perform(get("/api/snapshot").param("date", date)).andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void rolloverMigrationBackfillsOwnershipWithoutChangingVisitHistory() {
+        String schema = "step9_upgrade";
+        org.flywaydb.core.Flyway.configure()
+                .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .schemas(schema).defaultSchema(schema).target("7").load().migrate();
+        jdbc.update("""
+                INSERT INTO step9_upgrade.visit (ticket, visit_type, reason, status, created_at,
+                    customer_id, resource_id, business_date)
+                VALUES ('B0001', 'WALK_IN', 'PHONE_ACCESS', 'AT_RESOURCE',
+                    TIMESTAMPTZ '2026-09-14 16:00:00+00', 1, 1, DATE '2026-09-14')
+                """);
+        jdbc.update("UPDATE step9_upgrade.resource SET status = 'OCCUPIED' WHERE id = 1");
+        org.flywaydb.core.Flyway.configure()
+                .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(jdbc.queryForObject("SELECT active_visit_id FROM step9_upgrade.resource WHERE id = 1", Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM step9_upgrade.visit WHERE id = 1", String.class)).isEqualTo("AT_RESOURCE");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE schemaname = ? AND indexname = 'visit_active_resource_idx'",
+                Integer.class, schema)).isZero();
+    }
+
+    @Test
+    void competingOpeningResetsCannotClearTheFirstNewOccupant() throws Exception {
+        Visit old = occupied();
+        at("2026-09-15T12:30:00Z");
+        try (var executor = Executors.newFixedThreadPool(3)) {
+            var results = executor.invokeAll(List.<Callable<Long>>of(
+                    () -> { tickets.resetForOpening(); return 0L; },
+                    () -> occupied().id(),
+                    () -> { tickets.resetForOpening(); return 0L; }));
+            for (var result : results) result.get();
+            Long currentId = results.get(1).get();
+            assertThat(jdbc.queryForObject("SELECT active_visit_id FROM resource WHERE id = ?", Long.class, old.resourceId()))
+                    .isEqualTo(currentId);
+            assertThat(jdbc.queryForObject("SELECT status FROM resource WHERE id = ?", String.class, old.resourceId()))
+                    .isEqualTo("OCCUPIED");
+        }
+    }
+
 }

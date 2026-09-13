@@ -160,3 +160,11 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 
 .business-status { padding-left: 12px; border-left: 1px solid #d4dfd8; font-size: 12px; }
 .coverage-note { padding: 0 22px; }
+
+.closed-banner { position: sticky; top: 0; z-index: 10; padding: 14px 24px; text-align: center; background: #fff0ca; color: #593e0d; font-weight: 600; }
+.snapshot-table-scroll { overflow-x: auto; }
+.snapshot-table { width: 100%; border-collapse: collapse; margin: 24px 0; text-align: left; }
+.snapshot-table caption { text-align: left; font-weight: 600; padding-bottom: 12px; }
+.snapshot-table th, .snapshot-table td { padding: 12px; border-bottom: 1px solid #dce3e8; }
+.snapshot-resources { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.snapshot-resources li { display: grid; gap: 8px; border: 1px solid #dce3e8; border-radius: 8px; padding: 16px; }

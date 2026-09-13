@@ -1,0 +1,93 @@
+import React from 'react';
+import { afterEach, expect, test, vi } from 'vitest';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import App from './App.jsx';
+import { businessStatus, staff, rotation, ok } from './testQueues.js';
+
+const snapshot = {
+  businessDate: '2026-09-08', staff, coverage: rotation(), callOuts: [],
+  visits: [
+    { id: 1, ticket: 'B0001', visitType: 'WALK_IN', reason: 'PHONE_ACCESS', status: 'AT_RESOURCE', customer: { displayName: 'Demo Customer 001' } },
+    { id: 2, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: 'REEMPLOYMENT', status: 'CLOSED', assignedStaffId: 1 },
+  ],
+  resources: [{ id: 1, label: 'Phone 01', type: 'PHONE', status: 'OCCUPIED', ticket: 'B0001' }],
+};
+const closed = { isOpen: false, currentBusinessDate: snapshot.businessDate, lastCompletedBusinessDate: snapshot.businessDate };
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/kiosk'); });
+
+function mockBusiness(initial = closed) {
+  const state = { status: initial };
+  const fetchMock = vi.fn(async path => {
+    if (path === '/api/business-status') return ok(state.status);
+    if (path === '/api/snapshot?date=' + snapshot.businessDate) return ok(snapshot);
+    if (path === '/api/staff') return ok(staff);
+    if (path === '/api/simulator/status') return ok({ running: true, arrivalsPerMinute: 2 });
+    if (path.startsWith('/api/visits?')) return ok([]);
+    throw new Error('Unexpected request: ' + path);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return { state, fetchMock };
+}
+
+test.each(['/kiosk', '/front-desk', '/supervisor', '/my-queue?staff=1', '/resource-room'])(
+  '%s renders frozen data without mutation controls or live requests', async path => {
+    window.history.replaceState({}, '', path);
+    const { fetchMock } = mockBusiness();
+    render(<App />);
+    await screen.findByRole('table');
+    expect(screen.getByRole('status').textContent).toContain("2026-09-08's final activity");
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0);
+    expect(fetchMock.mock.calls.every(([url]) => url === '/api/business-status' || url.startsWith('/api/snapshot?'))).toBe(true);
+    if (path.startsWith('/my-queue')) {
+      expect(screen.getByText('A0001')).toBeTruthy();
+      expect(screen.queryByText('B0001')).toBeNull();
+    }
+    if (path === '/supervisor') expect(screen.getByRole('heading', { name: 'Coverage at close' })).toBeTruthy();
+    if (path === '/resource-room') expect(screen.getByRole('heading', { name: 'Resources at close' })).toBeTruthy();
+  },
+);
+
+test('closed mode fetches its snapshot once and returns to interactive kiosk when hours open', async () => {
+  vi.useFakeTimers();
+  const { state, fetchMock } = mockBusiness();
+  render(<App />);
+  await act(async () => {});
+  expect(screen.getByRole('table')).toBeTruthy();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  expect(fetchMock.mock.calls.filter(([path]) => path.startsWith('/api/snapshot?'))).toHaveLength(1);
+  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  state.status = businessStatus;
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(screen.getByRole('button', { name: 'Check in' })).toBeTruthy();
+  expect(screen.queryByRole('table')).toBeNull();
+  expect(screen.queryByText(/Career center is closed/)).toBeNull();
+});
+
+test('closing unmounts live front desk polling and hides every action', async () => {
+  vi.useFakeTimers();
+  window.history.replaceState({}, '', '/front-desk');
+  const { state, fetchMock } = mockBusiness(businessStatus);
+  render(<App />);
+  await act(async () => {});
+  expect(screen.getByRole('button', { name: 'Refresh queue' })).toBeTruthy();
+  state.status = closed;
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(screen.getByRole('table')).toBeTruthy();
+  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  const liveCalls = () => fetchMock.mock.calls.filter(([path]) => path.startsWith('/api/visits?')).length;
+  const stoppedAt = liveCalls();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  expect(liveCalls()).toBe(stoppedAt);
+});
+
+test('snapshot load failure never falls back to interactive screens', async () => {
+  vi.stubGlobal('fetch', vi.fn(async path => path === '/api/business-status' ? ok(closed)
+    : { ok: false, status: 500, json: async () => ({ detail: 'Snapshot unavailable.' }) }));
+  render(<App />);
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  expect(screen.getByRole('status').textContent).toContain('Career center is closed');
+});

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { request } from './api.js';
 
-export default function RoleSelector({ role, staffId, onNavigate }) {
+export default function RoleSelector({ role, staffId, onNavigate, snapshotStaff = null }) {
   const [staff, setStaff] = useState([]);
   const [error, setError] = useState('');
   useEffect(() => {
+    if (snapshotStaff) { setStaff(snapshotStaff.filter(person => person.role === 'LSR')); setError(''); return; }
     let active = true;
     const controller = new AbortController();
     request('/api/staff', { signal: controller.signal })
@@ -13,7 +14,7 @@ export default function RoleSelector({ role, staffId, onNavigate }) {
       })
       .catch(() => { if (active) setError('Staff views unavailable. Reload to try again.'); });
     return () => { active = false; controller.abort(); };
-  }, []);
+  }, [snapshotStaff]);
   const options = [
     ['kiosk', 'Kiosk', '/kiosk'],
     ['front-desk', 'Front desk', '/front-desk'],

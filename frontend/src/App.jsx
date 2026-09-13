@@ -6,6 +6,8 @@ import RoleSelector from './RoleSelector.jsx';
 import ResourceRoom from './ResourceRoom.jsx';
 import FrontDesk from './FrontDesk.jsx';
 import SimulatorControl from './SimulatorControl.jsx';
+import useBusinessView from './useBusinessView.js';
+import SnapshotView from './SnapshotView.jsx';
 
 function Kiosk() {
   const [visitType, setVisitType] = useState('');
@@ -112,6 +114,7 @@ function Kiosk() {
 }
 
 export default function App() {
+  const business = useBusinessView();
   const [location, setLocation] = useState(() => window.location.pathname + window.location.search);
   useEffect(() => {
     function syncLocation() { setLocation(window.location.pathname + window.location.search); }
@@ -143,12 +146,20 @@ export default function App() {
       <div className="demo-banner">Synthetic demo — no real data</div>
       <header className="topbar">
         <a className="brand" href="/kiosk"><span className="brand-mark">F</span><span>Frontline<small>Career Center</small></span></a>
-        <SimulatorControl />
-        <RoleSelector role={role} staffId={staffId} onNavigate={navigate} />
+        {business.status?.isOpen && <SimulatorControl />}
+        {(business.status?.isOpen || business.snapshot) && <RoleSelector role={role} staffId={staffId}
+          snapshotStaff={business.status?.isOpen ? null : business.snapshot?.staff} onNavigate={navigate} />}
       </header>
+      {business.status?.isOpen === false && <div className="closed-banner" role="status">
+        Career center is closed — showing {business.status.lastCompletedBusinessDate}'s final activity
+      </div>}
       <main>
         {!supported ? <section><h1>Page not available</h1><a href="/kiosk">Return to kiosk</a></section> :
-          screens[role]}
+          business.error ? <p role="alert">{business.error}</p> :
+          !business.status ? <p>Checking business hours...</p> :
+          business.status.isOpen ? <div key={business.status.currentBusinessDate}>{screens[role]}</div> :
+          business.snapshot ? <SnapshotView snapshot={business.snapshot} role={role} staffId={staffId} /> :
+          <p>Loading final activity...</p>}
       </main>
       <footer>Career Center · Synthetic intake demo</footer>
     </>

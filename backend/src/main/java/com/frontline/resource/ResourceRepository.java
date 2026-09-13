@@ -25,17 +25,27 @@ public class ResourceRepository {
     }
 
     public List<ResourceInventoryItem> inventory(LocalDate businessDate) {
+        return inventory(businessDate, false);
+    }
+
+    public List<ResourceInventoryItem> snapshotInventory(LocalDate businessDate) {
+        return inventory(businessDate, true);
+    }
+
+    private List<ResourceInventoryItem> inventory(LocalDate businessDate, boolean snapshot) {
         return jdbc.sql("""
-                SELECT r.*, v.id AS visit_id, v.ticket, v.version AS visit_version,
+                SELECT r.id, r.type, r.label,
+                       CASE WHEN :snapshot THEN CASE WHEN v.id IS NULL THEN 'FREE' ELSE 'OCCUPIED' END
+                            ELSE r.status END AS status, v.id AS visit_id, v.ticket, v.version AS visit_version,
                        c.id AS customer_id, c.display_name, c.language, c.veteran,
                        (SELECT max(e.created_at) FROM visit_event e
                         WHERE e.visit_id = v.id AND e.to_status = 'AT_RESOURCE') AS assigned_at
                 FROM resource r
-                LEFT JOIN visit v ON v.resource_id = r.id AND v.status = 'AT_RESOURCE' AND r.status = 'OCCUPIED'
+                LEFT JOIN visit v ON v.id = r.active_visit_id AND v.status = 'AT_RESOURCE' AND r.status = 'OCCUPIED'
                     AND v.business_date = :businessDate
                 LEFT JOIN customer c ON c.id = v.customer_id
                 ORDER BY r.type, r.label, r.id
-                """).param("businessDate", businessDate).query((rs, row) -> {
+                """).param("businessDate", businessDate).param("snapshot", snapshot).query((rs, row) -> {
                     Long customerId = rs.getObject("customer_id", Long.class);
                     Customer customer = customerId == null ? null : new Customer(customerId,
                             rs.getString("display_name"), Customer.Language.valueOf(rs.getString("language")),
@@ -48,9 +58,14 @@ public class ResourceRepository {
                 }).list();
     }
 
-    public void release(long id) {
-        jdbc.sql("UPDATE resource SET status = 'FREE' WHERE id = :id")
-                .param("id", id).update();
+    public void release(long id, long visitId) {
+        jdbc.sql("UPDATE resource SET status = 'FREE', active_visit_id = NULL WHERE id = :id AND active_visit_id = :visitId")
+                .param("id", id).param("visitId", visitId).update();
+    }
+
+    public void setOccupant(long resourceId, long visitId) {
+        jdbc.sql("UPDATE resource SET active_visit_id = :visitId WHERE id = :id")
+                .param("id", resourceId).param("visitId", visitId).update();
     }
 
     public Optional<Resource> assignLowestFree(Resource.Type type) {

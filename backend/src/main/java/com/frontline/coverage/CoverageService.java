@@ -2,6 +2,7 @@ package com.frontline.coverage;
 
 import com.frontline.model.CallOut;
 import com.frontline.business.BusinessCalendar;
+import com.frontline.business.BusinessDayService;
 import com.frontline.model.Staff;
 import com.frontline.model.StaffDuty;
 import com.frontline.staff.StaffRepository;
@@ -17,11 +18,13 @@ public class CoverageService {
     private final CoverageRepository repository;
     private final StaffRepository staff;
     private final BusinessCalendar calendar;
+    private final BusinessDayService days;
 
-    public CoverageService(CoverageRepository repository, StaffRepository staff, BusinessCalendar calendar) {
+    public CoverageService(CoverageRepository repository, StaffRepository staff, BusinessCalendar calendar, BusinessDayService days) {
         this.repository = repository;
         this.staff = staff;
         this.calendar = calendar;
+        this.days = days;
     }
 
     @Transactional(readOnly = true)
@@ -44,6 +47,7 @@ public class CoverageService {
         if (target.role() != Staff.Role.LSR) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Call-outs require an LSR.");
         }
+        days.freezeCompletedDays();
         return repository.upsert(staffId, date, reason == null || reason.isBlank() ? null : reason.strip());
     }
 

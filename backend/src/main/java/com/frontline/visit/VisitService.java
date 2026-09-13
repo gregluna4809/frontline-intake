@@ -2,6 +2,7 @@ package com.frontline.visit;
 
 import com.frontline.customer.CustomerRepository;
 import com.frontline.business.BusinessCalendar;
+import com.frontline.business.BusinessDayService;
 import com.frontline.business.TicketSequenceService;
 import java.time.LocalDate;
 import com.frontline.model.Customer;
@@ -26,15 +27,17 @@ public class VisitService {
     private final StaffRepository staff;
     private final BusinessCalendar calendar;
     private final TicketSequenceService tickets;
+    private final BusinessDayService days;
 
     public VisitService(VisitRepository repository, CustomerRepository customers, ResourceRepository resources,
-                        StaffRepository staff, BusinessCalendar calendar, TicketSequenceService tickets) {
+                        StaffRepository staff, BusinessCalendar calendar, TicketSequenceService tickets, BusinessDayService days) {
         this.repository = repository;
         this.customers = customers;
         this.resources = resources;
         this.staff = staff;
         this.calendar = calendar;
         this.tickets = tickets;
+        this.days = days;
     }
 
     @Transactional
@@ -98,6 +101,7 @@ public class VisitService {
             return describe(transition(previous, Visit.Status.WAITING_STAFF, previous.customerId(), null));
         }
         Resource resource = resources.assignLowestFree(previous.requiredResourceType()).orElse(null);
+        if (resource != null) resources.setOccupant(resource.id(), previous.id());
         Visit.Status next = resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE;
         Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id());
         return describe(updated);
@@ -140,6 +144,7 @@ public class VisitService {
         Resource resource = resources.assignLowestFree(previous.requiredResourceType())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "No matching resource is free. Refresh the inventory before trying again."));
+        resources.setOccupant(resource.id(), previous.id());
         return describe(transition(previous, Visit.Status.AT_RESOURCE, previous.customerId(), resource.id()));
     }
 
@@ -163,7 +168,7 @@ public class VisitService {
     private VisitDetail finish(Visit previous, Visit.Status next, String note) {
         // Resource rows are locked before the visit update, matching assignment
         // lock order. An optimistic conflict or event failure rolls back both.
-        if (previous.resourceId() != null) resources.release(previous.resourceId());
+        if (previous.resourceId() != null) resources.release(previous.resourceId(), previous.id());
         return describe(transition(previous, next, previous.customerId(), previous.resourceId(), note));
     }
 
@@ -189,6 +194,7 @@ public class VisitService {
     }
 
     private Visit requireVersion(long id, long expectedVersion) {
+        days.resetResourcesForOpening();
         Visit visit = findVisit(id);
         if (visit.version() != expectedVersion) throw staleVersion();
         return visit;
