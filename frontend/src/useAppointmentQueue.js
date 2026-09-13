@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api.js';
+import { calendarDate } from './time.js';
 
-export default function useAppointmentQueue() {
+export default function useAppointmentQueue({ includeCoverage = false } = {}) {
   const [snapshot, setSnapshot] = useState(null);
   const [queueError, setQueueError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -12,6 +13,7 @@ export default function useAppointmentQueue() {
   const [now, setNow] = useState(Date.now());
   const submitting = useRef(false);
   const revision = useRef(0);
+  const today = calendarDate(now);
 
   useEffect(() => {
     let active = true;
@@ -20,12 +22,13 @@ export default function useAppointmentQueue() {
     async function load() {
       const currentRevision = revision.current;
       try {
-        const [visits, staff] = await Promise.all([
+        const [visits, staff, coverage] = await Promise.all([
           request('/api/visits?status=WAITING_STAFF', { signal: controller.signal }),
           request('/api/staff', { signal: controller.signal }),
+          includeCoverage ? request('/api/rotation?date=' + today, { signal: controller.signal }) : Promise.resolve([]),
         ]);
         if (active && currentRevision === revision.current && !submitting.current) {
-          setSnapshot({ visits, staff });
+          setSnapshot({ visits, staff, coverage, date: today });
           setQueueError('');
           setNeedsRefresh(false);
         }
@@ -40,29 +43,28 @@ export default function useAppointmentQueue() {
     }
     load();
     return () => { active = false; controller.abort(); clearTimeout(timer); };
-  }, [refresh]);
+  }, [refresh, includeCoverage, today]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  async function mutate(visit, action, body) {
-    if (submitting.current || needsRefresh) return;
+  async function save(id, path, options, successMessage) {
+    if (submitting.current || needsRefresh || (includeCoverage && snapshot?.date !== today)) return false;
     submitting.current = true;
     revision.current++;
-    setPendingId(visit.id);
+    setPendingId(id);
     setNeedsRefresh(true);
     setActionError('');
     setNotice('');
     try {
-      await request('/api/visits/' + visit.id + '/' + action, {
-        method: 'POST', headers: { 'If-Match': '"' + visit.version + '"' },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
-      setNotice('Ticket ' + visit.ticket + (action === 'close' ? ' closed.' : ' assignment saved.'));
+      const result = await request(path, options);
+      setNotice(successMessage(result));
+      return true;
     } catch (failure) {
       setActionError(failure.message + ' Refresh the queue before trying again.');
+      return false;
     } finally {
       revision.current++;
       submitting.current = false;
@@ -71,10 +73,25 @@ export default function useAppointmentQueue() {
     }
   }
 
+  function mutate(visit, action, body) {
+    return save(visit.id, '/api/visits/' + visit.id + '/' + action, {
+      method: 'POST', headers: { 'If-Match': '"' + visit.version + '"' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }, result => action === 'reschedule'
+      ? 'Ticket ' + visit.ticket + ' rescheduled as ' + result.replacementVisit.visit.ticket + '.'
+      : 'Ticket ' + visit.ticket + (action === 'close' ? ' closed.' : ' assignment saved.'));
+  }
+
+  function markCalledOut(staffId, reason) {
+    return save('staff:' + staffId, '/api/call-outs', {
+      method: 'POST', body: JSON.stringify({ staffId, date: today, reason: reason.trim() || null }),
+    }, () => 'Call-out saved. Refreshing coverage and assigned appointments.');
+  }
+
   return {
-    snapshot, now, queueError, actionError, notice, pendingId,
-    disabled: needsRefresh || pendingId !== null,
+    snapshot, now, today, queueError, actionError, notice, pendingId,
+    disabled: needsRefresh || pendingId !== null || (includeCoverage && snapshot?.date !== today),
     refresh: () => setRefresh(value => value + 1),
-    mutate,
+    mutate, markCalledOut,
   };
 }

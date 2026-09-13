@@ -16,7 +16,8 @@ public record Visit(
         Long resourceId,
         Instant createdAt,
         Instant closedAt,
-        long version
+        long version,
+        Long previousVisitId
 ) {
     public enum VisitType { WALK_IN, APPOINTMENT }
     public Resource.Type requiredResourceType() {

@@ -43,6 +43,34 @@ public class VisitRepository {
                 .single();
     }
 
+    public Visit createRescheduled(Visit previous) {
+        return jdbc.sql("""
+                WITH ticket_number AS (SELECT nextval('appointment_ticket_sequence') AS value)
+                INSERT INTO visit (ticket, visit_type, appointment_category, appointment_type,
+                                   appointment_status, status, customer_id, previous_visit_id, created_at, version)
+                SELECT 'A' || lpad(value::text, greatest(4, length(value::text)), '0'),
+                       'APPOINTMENT', :category, :appointmentType, 'RESCHEDULED', 'WAITING_STAFF',
+                       :customerId, :previousVisitId, CURRENT_TIMESTAMP, 0
+                FROM ticket_number
+                RETURNING *
+                """)
+                .param("category", previous.appointmentCategory())
+                .param("appointmentType", previous.appointmentType().name())
+                .param("customerId", previous.customerId())
+                .param("previousVisitId", previous.id())
+                .query(this::mapVisit).single();
+    }
+
+    public void recordRescheduled(Visit visit) {
+        jdbc.sql("""
+                INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
+                VALUES (:visitId, NULL, 'WAITING_STAFF', 'APPOINTMENTS', :createdAt, :note)
+                """)
+                .param("visitId", visit.id()).param("createdAt", Timestamp.from(visit.createdAt()))
+                .param("note", "Rescheduled from visit ID: " + visit.previousVisitId() + ".")
+                .update();
+    }
+
     public void recordCheckIn(Visit visit) { recordCheckIn(visit, "KIOSK"); }
 
     public void recordCheckIn(Visit visit, String actor) {
@@ -110,12 +138,16 @@ public class VisitRepository {
     }
 
     public void recordTransition(Visit previous, Visit updated) {
+        recordTransition(previous, updated, staffAssignmentNote(previous, updated));
+    }
+
+    public void recordTransition(Visit previous, Visit updated, String note) {
         jdbc.sql("""
                 INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
                 VALUES (:visitId, :fromStatus, :toStatus, :actor, CURRENT_TIMESTAMP, :note)
                 """)
                 .param("visitId", updated.id())
-                .param("note", staffAssignmentNote(previous, updated), Types.VARCHAR)
+                .param("note", note, Types.VARCHAR)
                 .param("fromStatus", previous.status().name())
                 .param("toStatus", updated.status().name())
                 .param("actor", switch (previous.status()) {
@@ -169,6 +201,6 @@ public class VisitRepository {
                 rs.getObject("resource_id", Long.class),
                 rs.getTimestamp("created_at").toInstant(),
                 closedAt == null ? null : closedAt.toInstant(),
-                rs.getLong("version"));
+                rs.getLong("version"), rs.getObject("previous_visit_id", Long.class));
     }
 }

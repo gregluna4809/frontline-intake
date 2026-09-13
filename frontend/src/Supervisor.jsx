@@ -2,13 +2,18 @@ import { useState } from 'react';
 import { appointmentTypeLabel, appointmentStatusLabel } from './api.js';
 import { waitingTime } from './time.js';
 import useAppointmentQueue from './useAppointmentQueue.js';
+import CoveragePanel from './CoveragePanel.jsx';
 
 function AssignmentRow({ visit, staff, queue }) {
   const [staffId, setStaffId] = useState(visit.assignedStaffId == null ? '' : String(visit.assignedStaffId));
   const hasTarget = staff.some(person => String(person.id) === staffId);
+  const orphaned = queue.snapshot.coverage.some(person =>
+    person.staffId === visit.assignedStaffId && person.dutyType === 'RESOURCE_ROOM');
   return (
     <tr>
-      <td className="table-ticket">{visit.ticket}</td>
+      <td className="table-ticket">{visit.ticket}
+        {orphaned && <small className="orphaned-badge">Orphaned — staff on Resource Room today</small>}
+      </td>
       <td>{appointmentTypeLabel(visit.appointmentType)}</td>
       <td>{appointmentStatusLabel(visit.appointmentStatus)}</td>
       <td>{waitingTime(visit.waitingSince, queue.now)}</td>
@@ -26,12 +31,16 @@ function AssignmentRow({ visit, staff, queue }) {
           </button>
         </div>
       </td>
+      <td><button className="secondary" disabled={queue.disabled}
+        aria-label={'Reschedule ' + visit.ticket} onClick={() => queue.mutate(visit, 'reschedule')}>
+        Reschedule
+      </button></td>
     </tr>
   );
 }
 
 export default function Supervisor() {
-  const queue = useAppointmentQueue();
+  const queue = useAppointmentQueue({ includeCoverage: true });
   const staff = queue.snapshot?.staff.filter(person => person.role === 'LSR') || [];
   const groups = [
     { id: null, label: 'Unassigned' },
@@ -55,6 +64,7 @@ export default function Supervisor() {
       {queue.queueError && <p role="alert" className="error">{queue.queueError} The board may be out of date.</p>}
       {queue.actionError && <p role="alert" className="error">{queue.actionError}</p>}
       {queue.notice && <p role="status" className="routing-result">{queue.notice}</p>}
+      {queue.snapshot && <CoveragePanel key={queue.today} queue={queue} />}
       {!queue.snapshot ? <p role="status" className="empty">
         {queue.queueError ? 'Board unavailable.' : 'Loading supervisor board…'}
       </p> : (
@@ -68,7 +78,7 @@ export default function Supervisor() {
                 {visits.length === 0 ? <p className="empty">No appointments in this group.</p> : (
                   <div className="table-scroll">
                     <table>
-                      <thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Waiting time</th><th>Assignment</th></tr></thead>
+                      <thead><tr><th>Ticket</th><th>Type</th><th>Status</th><th>Waiting time</th><th>Assignment</th><th>Action</th></tr></thead>
                       <tbody>{visits.map(visit => <AssignmentRow key={visit.id + ':' + visit.version}
                         visit={visit} staff={staff} queue={queue} />)}</tbody>
                     </table>

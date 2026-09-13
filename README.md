@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–6 are implemented. No login, app Dockerfile, or deployment configuration is included.
+Steps 1–7 are implemented. No login, app Dockerfile, or deployment configuration is included.
 
 ## Run on Windows PowerShell
 
@@ -104,6 +104,25 @@ Customer search trims whitespace and treats wildcard characters literally. An em
 | WALK_IN / DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, or OTHER | STATION |
 
 A walk-in receives the lowest-labeled FREE resource of the required type. The resource becomes OCCUPIED and the visit becomes AT_RESOURCE. If none is free, the visit becomes WAITING_RESOURCE. The small inventory of that type is row-locked in label order during assignment so concurrent callers wait for a committed result. Resource reservation or release, the guarded version update, and the event commit or roll back together. Resource rows are locked before visit updates consistently. Close/Left retain the visit's resourceId as history while setting the resource FREE; the inventory only reports its current occupant.
+
+## Step 7: staff rotation, call-outs, and rescheduling
+
+Migration V6 adds `staff_rotation`, `call_out`, and the nullable `visit.previous_visit_id` self-reference. ISO weekdays are stored as integers, Monday = 1 through Sunday = 7. Each of the four synthetic LSRs has seven rotation rows: one Resource Room day, staggered Monday through Thursday in staff-ID order, and Appointments on every other day (including weekends).
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | /api/rotation?date=YYYY-MM-DD | Each LSR's `{ staffId, displayName, dutyType }`; a call-out overrides the base duty with RESOURCE_ROOM for that date only |
+| POST | /api/call-outs | Body: `{ "staffId": 1, "date": "YYYY-MM-DD", "reason": "Optional synthetic note" }`; returns 200 with `{ id, staffId, date, reason, createdAt }` |
+| GET | /api/call-outs?date=YYYY-MM-DD | Call-outs for that date, ordered by staff ID |
+| POST | /api/visits/{id}/reschedule | No body; requires the current quoted If-Match version; returns 201 with `{ closedVisit, replacementVisit }` visit-detail objects and a Location header for the replacement |
+
+Call-outs upsert on `(staff_id, date)`: later requests replace the reason while retaining the row ID and original creation timestamp. Omitted or blank reasons become null. Past dates are rejected with 400 using the backend's local calendar date; unknown staff return 404 and non-LSR targets return 409. Missing or malformed dates return 400. GET endpoints also support historical dates.
+
+The supervisor board's Today's coverage panel queries the browser's local calendar date, displays every LSR's effective duty, and provides a small Mark called out form. For this prototype, a call-out means the selected LSR covers Resource Room, rather than an absence from the center. Assigned waiting appointments are flagged whenever their LSR's effective duty is RESOURCE_ROOM, whether from the base rotation or a call-out. Assignment remains a supervisor decision; call-outs do not silently reassign or close visits. Coverage and queues refresh together every five seconds and after mutations; actions stay disabled until that refresh succeeds. An open board changes the requested date at local midnight. Run the backend and browser with the same local calendar/timezone when using the Today's coverage actions.
+
+Reschedule is available for every waiting appointment on the supervisor board and alongside Close in My Queue. It uses the normal CLOSED transition and closedAt timestamp, with an explicit rescheduling note in the old visit's event log. In the same transaction it creates a fresh A ticket with the same customer, appointment type, and category, appointmentStatus RESCHEDULED, status WAITING_STAFF, version 0, and no staff or resource assignment. The replacement's previousVisitId links back to the old visit; a unique foreign key prevents multiple direct replacements. Its initial event records entry to WAITING_STAFF and starts a fresh waiting timer. Failures roll back the closure, replacement, and both event writes together. Repeated or competing requests are guarded by the existing version and status checks.
+
+Resource-room visits are not assigned to staff, so that screen remains unchanged. The new tests cover rotation seeds and date isolation, call-out upserts and validation, orphan flagging and recovery, rescheduling from both staff screens, preserved customer/classification, history links, rollback, and concurrency.
 
 ## Simplest choices where the spec is silent
 

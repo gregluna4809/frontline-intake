@@ -6,3 +6,9 @@ export function waitingTime(waitingSince, now) {
   if (elapsed < 60) return elapsed + ' min';
   return Math.floor(elapsed / 60) + ' hr ' + (elapsed % 60) + ' min';
 }
+
+export function calendarDate(now) {
+  const date = new Date(now);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')].join('-');
+}

@@ -34,10 +34,15 @@ export default function MyQueue({ staffId }) {
                     <td>{appointmentTypeLabel(visit.appointmentType)}</td>
                     <td>{appointmentStatusLabel(visit.appointmentStatus)}</td>
                     <td>{waitingTime(visit.waitingSince, queue.now)}</td>
-                    <td><button className="primary" aria-label={'Close ' + visit.ticket}
+                    <td><div className="visit-actions"><button className="primary" aria-label={'Close ' + visit.ticket}
                       disabled={queue.disabled} onClick={() => queue.mutate(visit, 'close')}>
-                      {queue.pendingId === visit.id ? 'Closing…' : 'Close'}
-                    </button></td>
+                      {queue.pendingId === visit.id ? 'Saving…' : 'Close'}
+                    </button>
+                      <button className="secondary" aria-label={'Reschedule ' + visit.ticket}
+                        disabled={queue.disabled} onClick={() => queue.mutate(visit, 'reschedule')}>
+                        Reschedule
+                      </button>
+                    </div></td>
                   </tr>
                 ))}</tbody>
               </table>

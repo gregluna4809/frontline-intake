@@ -98,6 +98,21 @@ public class VisitService {
     }
 
     @Transactional
+    public RescheduleResult reschedule(long id, long expectedVersion) {
+        Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
+        if (previous.visitType() != Visit.VisitType.APPOINTMENT || previous.customerId() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Rescheduling requires an identified appointment.");
+        }
+        VisitDetail closed = finish(previous, Visit.Status.CLOSED,
+                "Rescheduled appointment; replacement links to this visit via previousVisitId.");
+        Visit replacement = repository.createRescheduled(previous);
+        repository.recordRescheduled(replacement);
+        return new RescheduleResult(closed, describe(replacement));
+    }
+
+    public record RescheduleResult(VisitDetail closedVisit, VisitDetail replacementVisit) {}
+
+    @Transactional
     public VisitDetail left(long id, long expectedVersion) {
         Visit previous = requireVersion(id, expectedVersion);
         if (previous.status() == Visit.Status.CLOSED || previous.status() == Visit.Status.LEFT) {
@@ -129,16 +144,25 @@ public class VisitService {
     }
 
     private VisitDetail finish(Visit previous, Visit.Status next) {
+        return finish(previous, next, null);
+    }
+
+    private VisitDetail finish(Visit previous, Visit.Status next, String note) {
         // Resource rows are locked before the visit update, matching assignment
         // lock order. An optimistic conflict or event failure rolls back both.
         if (previous.resourceId() != null) resources.release(previous.resourceId());
-        return describe(transition(previous, next, previous.customerId(), previous.resourceId()));
+        return describe(transition(previous, next, previous.customerId(), previous.resourceId(), note));
     }
 
     private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId) {
+        return transition(previous, next, customerId, resourceId, null);
+    }
+
+    private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId, String note) {
         Visit updated = repository.transition(previous, next, customerId, resourceId)
                 .orElseThrow(this::staleVersion);
-        repository.recordTransition(previous, updated);
+        if (note == null) repository.recordTransition(previous, updated);
+        else repository.recordTransition(previous, updated, note);
         return updated;
     }
 

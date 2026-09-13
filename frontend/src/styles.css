@@ -142,3 +142,18 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .staff-assignment select { max-width: 200px; }
 .staff-assignment button { padding: 10px 14px; }
 .staff-views-error { color: #8b3328; max-width: 180px; }
+
+.coverage-panel { margin-bottom: 24px; }
+.coverage-panel time { color: #60716b; font-size: 13px; }
+.coverage-list { list-style: none; padding: 0; margin: 0; }
+.coverage-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 22px; border-top: 1px solid #e5ebe7; }
+.coverage-list strong, .coverage-list span { display: block; font-size: 13px; }
+.coverage-list span { margin-top: 6px; color: #526a5d; }
+.coverage-list button { padding: 9px 12px; font-size: 12px; }
+.call-out-form { border-top: 1px solid #d4dfd8; padding: 22px; background: #f7faf7; }
+.call-out-form h3 { margin: 0; font-size: 16px; }
+.call-out-form p, .call-out-form label { font-size: 13px; }
+.call-out-form textarea { display: block; width: 100%; margin: 8px 0 16px; padding: 10px; border: 1px solid #bacdc0; border-radius: 8px; font: inherit; resize: vertical; }
+.visit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.visit-actions button { padding: 10px 14px; }
+.orphaned-badge { display: block; white-space: normal; max-width: 220px; margin-top: 8px; padding: 6px 8px; border-radius: 5px; background: #fff1cf; color: #795000; font-size: 11px; line-height: 1.4; letter-spacing: normal; }

@@ -72,3 +72,28 @@ test('a failed queue load does not report an empty successful queue', async () =
   expect(await screen.findByText('Queue unavailable.')).toBeTruthy();
   expect(screen.queryByText('No appointments assigned to you.')).toBeNull();
 });
+
+
+test('my queue can reschedule an assigned appointment and reloads after a stale version', async () => {
+  const { state, fetchMock } = mockQueues();
+  state.visits[1].version = 3;
+  let firstRead = true;
+  const original = fetchMock.getMockImplementation();
+  fetchMock.mockImplementation((path, options) => {
+    if (path.includes('WAITING_STAFF') && firstRead) {
+      firstRead = false;
+      return Promise.resolve(ok(state.visits.map(visit => ({ ...visit, version: 2 }))));
+    }
+    return original(path, options);
+  });
+  render(<MyQueue staffId="1" />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Reschedule A0002' }));
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Reschedule A0002' }).disabled).toBe(false));
+  await user.click(screen.getByRole('button', { name: 'Reschedule A0002' }));
+  expect(await screen.findByText('Ticket A0002 rescheduled as A0004.')).toBeTruthy();
+  expect(await screen.findByText('No appointments assigned to you.')).toBeTruthy();
+  expect(fetchMock.mock.calls.filter(([path]) => path.endsWith('/reschedule'))
+    .map(([, options]) => options.headers['If-Match'])).toEqual(['"2"', '"3"']);
+});

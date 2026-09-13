@@ -892,6 +892,116 @@ class VisitApiTest {
         assertThat(service.detail(visit.id()).events()).hasSize(4);
     }
 
+    @Test
+    void rescheduleClosesOldVisitAndCreatesLinkedUnassignedAppointment() throws Exception {
+        Visit original = waitingStaff();
+        service.assignStaff(original.id(), 1, original.version());
+        var before = service.detail(original.id());
+        mvc.perform(post("/api/visits/{id}/reschedule", original.id()).header("If-Match", "\"3\""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.closedVisit.visit.status").value("CLOSED"))
+                .andExpect(jsonPath("$.closedVisit.visit.closedAt").isNotEmpty())
+                .andExpect(jsonPath("$.closedVisit.visit.version").value(4))
+                .andExpect(jsonPath("$.replacementVisit.visit.status").value("WAITING_STAFF"))
+                .andExpect(jsonPath("$.replacementVisit.visit.assignedStaffId").isEmpty())
+                .andExpect(jsonPath("$.replacementVisit.visit.previousVisitId").value(original.id()));
+        var queue = service.list(Visit.Status.WAITING_STAFF);
+        assertThat(queue).hasSize(1);
+        Visit replacement = queue.getFirst().visit();
+        assertThat(replacement.id()).isNotEqualTo(original.id());
+        assertThat(replacement.ticket()).isEqualTo("A0002");
+        assertThat(replacement.customerId()).isEqualTo(original.customerId());
+        assertThat(replacement.appointmentCategory()).isEqualTo(original.appointmentCategory());
+        assertThat(replacement.appointmentType()).isEqualTo(original.appointmentType());
+        assertThat(replacement.appointmentStatus()).isEqualTo(Visit.AppointmentStatus.RESCHEDULED);
+        assertThat(replacement.resourceId()).isNull();
+        assertThat(replacement.closedAt()).isNull();
+        assertThat(replacement.version()).isZero();
+        assertThat(queue.getFirst().waitingSince()).isEqualTo(replacement.createdAt());
+        var closed = service.detail(original.id());
+        assertThat(closed.visit().assignedStaffId()).isEqualTo(1);
+        assertThat(closed.events()).hasSize(before.events().size() + 1);
+        assertThat(closed.events().getLast().note()).contains("Rescheduled");
+        assertThat(service.detail(replacement.id()).events()).singleElement().satisfies(event -> {
+            assertThat(event.toStatus()).isEqualTo(Visit.Status.WAITING_STAFF);
+            assertThat(event.actor()).isEqualTo("APPOINTMENTS");
+            assertThat(event.note()).contains(Long.toString(original.id()));
+        });
+        var next = service.reschedule(replacement.id(), 0).replacementVisit().visit();
+        assertThat(next.previousVisitId()).isEqualTo(replacement.id());
+        assertThat(next.ticket()).isEqualTo("A0003");
+    }
+
+    @Test
+    void rescheduleRequiresCurrentVersionAndCannotRepeat() throws Exception {
+        Visit visit = waitingStaff();
+        mvc.perform(post("/api/visits/{id}/reschedule", visit.id())).andExpect(status().is(428));
+        mvc.perform(post("/api/visits/{id}/reschedule", visit.id()).header("If-Match", "2"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/visits/{id}/reschedule", visit.id()).header("If-Match", "\"1\""))
+                .andExpect(status().isPreconditionFailed());
+        assertThat(service.detail(visit.id()).visit()).isEqualTo(visit);
+        assertThat(service.list(null)).hasSize(1);
+        service.reschedule(visit.id(), visit.version());
+        mvc.perform(post("/api/visits/{id}/reschedule", visit.id()).header("If-Match", "\"2\""))
+                .andExpect(status().isPreconditionFailed());
+        mvc.perform(post("/api/visits/{id}/reschedule", visit.id()).header("If-Match", "\"3\""))
+                .andExpect(status().isConflict());
+        assertThat(service.list(null)).hasSize(2);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"CHECKED_IN", "IDENTIFIED", "AT_RESOURCE", "WAITING_RESOURCE", "CLOSED", "LEFT"})
+    void rescheduleRejectsNonWaitingStates(Visit.Status state) throws Exception {
+        Visit visit = waitingStaff();
+        jdbc.update("UPDATE visit SET status = ? WHERE id = ?", state.name(), visit.id());
+        var before = service.detail(visit.id());
+        mvc.perform(post("/api/visits/{id}/reschedule", visit.id()).header("If-Match", "\"2\""))
+                .andExpect(status().isConflict());
+        assertThat(service.detail(visit.id())).isEqualTo(before);
+        assertThat(service.list(null)).hasSize(1);
+    }
+
+    @Test
+    void failedReplacementEventRollsBackClosureAndNewVisit() {
+        Visit visit = waitingStaff();
+        service.assignStaff(visit.id(), 1, visit.version());
+        var before = service.detail(visit.id());
+        doThrow(new IllegalStateException("Simulated replacement event failure"))
+                .when(repository).recordRescheduled(any());
+        assertThatThrownBy(() -> service.reschedule(visit.id(), before.visit().version()))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(service.detail(visit.id())).isEqualTo(before);
+        assertThat(service.list(null)).hasSize(1);
+    }
+
+    @Test
+    void competingReschedulesCreateExactlyOneReplacement() throws Exception {
+        Visit visit = waitingStaff();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<Integer> reschedule = () -> {
+            ready.countDown();
+            start.await();
+            try {
+                service.reschedule(visit.id(), visit.version());
+                return 201;
+            } catch (ResponseStatusException exception) {
+                return exception.getStatusCode().value();
+            }
+        };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(reschedule);
+            var second = executor.submit(reschedule);
+            assertThat(ready.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(201, 412);
+        }
+        assertThat(service.list(null)).hasSize(2);
+        assertThat(service.list(Visit.Status.WAITING_STAFF)).hasSize(1);
+        assertThat(service.detail(visit.id()).visit().status()).isEqualTo(Visit.Status.CLOSED);
+    }
+
     private Visit waitingStaff() {
         Visit visit = service.checkIn(Visit.VisitType.APPOINTMENT, null,
                 Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.FOLLOWUP);

@@ -63,6 +63,15 @@ public class VisitController {
         return response(service.close(id, expectedVersion(version)));
     }
 
+    @PostMapping("/{id}/reschedule")
+    public ResponseEntity<VisitService.RescheduleResult> reschedule(
+            @PathVariable long id,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        var result = service.reschedule(id, expectedVersion(version));
+        return ResponseEntity.created(URI.create("/api/visits/" + result.replacementVisit().visit().id()))
+                .body(result);
+    }
+
     private long expectedVersion(String header) {
         if (header == null) {
             throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,
