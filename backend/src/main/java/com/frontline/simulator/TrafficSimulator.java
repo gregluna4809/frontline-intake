@@ -41,17 +41,18 @@ public class TrafficSimulator {
                 String choice = draw(properties.weights());
                 if (choice.equals("APPOINTMENT")) {
                     visits.checkIn(Visit.VisitType.APPOINTMENT, null,
-                        Visit.AppointmentCategory.valueOf(draw(properties.appointmentWeights())),
-                        Visit.AppointmentType.valueOf(draw(properties.appointmentTypeWeights())), "SIMULATOR");
+                        Visit.AppointmentCategory.valueOf(draw(properties.appointmentWeights())), "SIMULATOR");
                 } else {
-                    visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.valueOf(choice), null, null, "SIMULATOR");
+                    visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.valueOf(choice), null, "SIMULATOR");
                 }
                 createdSinceStart++;
             } catch (Exception exception) { log.error("Simulator arrival failed", exception); }
         }
     }
     private String draw(Map<String,Integer> weights) {
-        int remaining = ThreadLocalRandom.current().nextInt(weights.values().stream().mapToInt(Integer::intValue).sum());
+        return draw(weights, ThreadLocalRandom.current().nextInt(weights.values().stream().mapToInt(Integer::intValue).sum()));
+    }
+    static String draw(Map<String,Integer> weights, int remaining) {
         for (var entry : weights.entrySet()) {
             remaining -= entry.getValue();
             if (remaining < 0) return entry.getKey();

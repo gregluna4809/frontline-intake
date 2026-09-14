@@ -27,13 +27,12 @@ class TrafficSimulatorTest {
     @Autowired SimulatorProperties properties;
 
     @ParameterizedTest
-    @CsvSource({"PHONE_ACCESS,REEMPLOYMENT,INITIAL", "COMPUTER_ACCESS,REEMPLOYMENT,INITIAL", "JOB_SEARCH,REEMPLOYMENT,INITIAL",
-        "DOCUMENT_SERVICES,REEMPLOYMENT,INITIAL", "BENEFITS_ASSISTANCE,REEMPLOYMENT,INITIAL", "OTHER,REEMPLOYMENT,INITIAL",
-        "APPOINTMENT,REEMPLOYMENT,INITIAL", "APPOINTMENT,CAREER_SERVICES,INITIAL", "APPOINTMENT,VETERANS,INITIAL",
-        "APPOINTMENT,REEMPLOYMENT,FOLLOWUP", "APPOINTMENT,CAREER_SERVICES,FOLLOWUP", "APPOINTMENT,VETERANS,FOLLOWUP"})
-    void tickCreatesValidVisitsWithSimulatorActor(String choice, String category, String appointmentType) {
+    @CsvSource({"PHONE_ACCESS,MANDATORY", "COMPUTER_ACCESS,MANDATORY", "JOB_SEARCH,MANDATORY",
+        "DOCUMENT_SERVICES,MANDATORY", "BENEFITS_ASSISTANCE,MANDATORY", "OTHER,MANDATORY",
+        "APPOINTMENT,MANDATORY", "APPOINTMENT,JOB_SEARCH_ASSISTANCE"})
+    void tickCreatesValidVisitsWithSimulatorActor(String choice, String category) {
         var simulator = new TrafficSimulator(visits, new SimulatorProperties(false, 2,
-                Map.of(choice, 1), Map.of(category, 1), Map.of(appointmentType, 1)));
+                Map.of(choice, 1), Map.of(category, 1)));
         var before = visits.list(null).stream().map(item -> item.visit().id()).collect(java.util.stream.Collectors.toSet());
         simulator.tick();
         assertThat(simulator.status().createdSinceStart()).isZero();
@@ -48,7 +47,7 @@ class TrafficSimulatorTest {
                 assertThat(visit.visitType()).isEqualTo(Visit.VisitType.APPOINTMENT);
                 assertThat(visit.reason()).isNull();
                 assertThat(visit.appointmentCategory()).isEqualTo(category);
-                assertThat(visit.appointmentType()).isEqualTo(Visit.AppointmentType.valueOf(appointmentType));
+                assertThat(visit.appointmentType()).isNull();
                 assertThat(visit.appointmentStatus()).isEqualTo(Visit.AppointmentStatus.SCHEDULED);
             } else {
                 assertThat(visit.visitType()).isEqualTo(Visit.VisitType.WALK_IN);
@@ -74,6 +73,7 @@ class TrafficSimulatorTest {
     void endpointsToggleStatusAndDefaultIsStopped() throws Exception {
         assertThat(configured.status().running()).isFalse();
         assertThat(properties.arrivalsPerMinute()).isEqualTo(4);
+        assertThat(properties.appointmentWeights()).isEqualTo(Map.of("MANDATORY", 95, "JOB_SEARCH_ASSISTANCE", 5));
         var simulator = new TrafficSimulator(visits, properties);
         var mvc = MockMvcBuilders.standaloneSetup(new SimulatorController(simulator)).build();
         mvc.perform(get("/api/simulator/status")).andExpect(status().isOk())
@@ -86,10 +86,10 @@ class TrafficSimulatorTest {
     @Test
     void enabledConfigurationStartsRunningAndInvalidWeightsAreRejected() {
         assertThat(new TrafficSimulator(visits, new SimulatorProperties(true, 1,
-                Map.of("OTHER", 1), Map.of("VETERANS", 1), Map.of("INITIAL", 30, "FOLLOWUP", 70))).status().running()).isTrue();
-        assertThatThrownBy(() -> new SimulatorProperties(false, 1, Map.of("OTHER", 0), Map.of("VETERANS", 1), Map.of("INITIAL", 30, "FOLLOWUP", 70)))
+                Map.of("OTHER", 1), Map.of("MANDATORY", 1))).status().running()).isTrue();
+        assertThatThrownBy(() -> new SimulatorProperties(false, 1, Map.of("OTHER", 0), Map.of("MANDATORY", 1)))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SimulatorProperties(false, -1, Map.of("OTHER", 1), Map.of("VETERANS", 1), Map.of("INITIAL", 30, "FOLLOWUP", 70)))
+        assertThatThrownBy(() -> new SimulatorProperties(false, -1, Map.of("OTHER", 1), Map.of("MANDATORY", 1)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

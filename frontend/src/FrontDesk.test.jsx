@@ -26,7 +26,7 @@ const ok = data => ({ ok: true, json: async () => data });
 
 function mockWorkflow({ finalStatus = 'AT_RESOURCE', appointment = false, failRoute = false, missedAppointment = null } = {}) {
   let detail = initialDetail(appointment ? {
-    visitType: 'APPOINTMENT', reason: null, appointmentCategory: 'Reemployment Appointment',
+    visitType: 'APPOINTMENT', reason: null, appointmentCategory: 'MANDATORY',
   } : {});
   let routeFailed = false;
   const mock = vi.fn(async (path, options = {}) => {
@@ -78,7 +78,7 @@ test.each([
   render(<FrontDesk />);
   const user = userEvent.setup();
   await identify(user);
-  if (appointment) expect(within(screen.getByRole('complementary')).getByText('Reemployment Appointment')).toBeTruthy();
+  if (appointment) expect(within(screen.getByRole('complementary')).getByText('Mandatory')).toBeTruthy();
   await user.click(screen.getByRole('button', { name: 'Route' }));
   expect(await screen.findByText(message)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'B0001' })).toBeNull();

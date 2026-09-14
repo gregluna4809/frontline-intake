@@ -24,7 +24,7 @@ public class VisitController {
 
     @PostMapping
     public ResponseEntity<Visit> create(@Valid @RequestBody CheckInRequest request) {
-        Visit visit = service.checkIn(request.visitType(), request.reason(), request.appointmentCategory(), request.appointmentType());
+        Visit visit = service.checkIn(request.visitType(), request.reason(), request.appointmentCategory());
         return ResponseEntity.created(URI.create("/api/visits/" + visit.id()))
                 .eTag(Long.toString(visit.version())).body(visit);
     }
@@ -113,8 +113,7 @@ public class VisitController {
     }
 
     public record CheckInRequest(
-            @NotNull Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory,
-            Visit.AppointmentType appointmentType
+            @NotNull Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory
     ) {}
     @PostMapping("/{id}/assign-staff")
     public ResponseEntity<VisitService.VisitDetail> assignStaff(

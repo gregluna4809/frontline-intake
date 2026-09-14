@@ -65,7 +65,7 @@ class FtrApiTest {
                     CASE WHEN ? IN ('CLOSED', 'LEFT') THEN CURRENT_TIMESTAMP ELSE NULL END)
                 RETURNING id
                 """, Long.class, "TEST" + (++ticket), type, appointment ? null : "PHONE_ACCESS",
-                appointment ? "REEMPLOYMENT" : null, appointment ? "INITIAL" : null,
+                appointment ? "MANDATORY" : null, appointment ? "INITIAL" : null,
                 appointmentStatus, status, customerId, date,
                 java.sql.Timestamp.from(Instant.now().minusSeconds(86400)), status);
         return visits.detail(id).visit();
@@ -211,7 +211,7 @@ class FtrApiTest {
         Visit other = visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.OTHER, null);
         assertThat(visits.identify(other.id(), 2, 0).missedAppointment()).isNull();
         Visit currentAppointment = visits.checkIn(Visit.VisitType.APPOINTMENT, null,
-                Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.INITIAL);
+                Visit.AppointmentCategory.MANDATORY);
         // The appointment being identified must not hide its own customer's history.
         assertThat(visits.identify(currentAppointment.id(), 1, 0).missedAppointment().id()).isEqualTo(old.id());
         assertThat(visits.detail(walkIn.id()).missedAppointment()).isNull();

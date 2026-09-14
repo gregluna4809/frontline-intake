@@ -155,7 +155,7 @@ class CoverageApiTest {
     void callingOutAssignedLsrExposesResourceRoomDutyWithoutChangingAppointments() throws Exception {
         LocalDate date = nextMonday();
         var visit = visits.checkIn(Visit.VisitType.APPOINTMENT, null,
-                Visit.AppointmentCategory.CAREER_SERVICES, Visit.AppointmentType.INITIAL);
+                Visit.AppointmentCategory.JOB_SEARCH_ASSISTANCE);
         visits.identify(visit.id(), 1, 0);
         visits.route(visit.id(), 1);
         visits.assignStaff(visit.id(), 2, 2);

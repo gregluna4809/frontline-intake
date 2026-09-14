@@ -29,9 +29,5 @@ simulator:
     BENEFITS_ASSISTANCE: 2
     OTHER: 1
   appointmentWeights:
-    REEMPLOYMENT: 60
-    CAREER_SERVICES: 30
-    VETERANS: 10
-  appointmentTypeWeights:
-    INITIAL: 30
-    FOLLOWUP: 70
+    MANDATORY: 95
+    JOB_SEARCH_ASSISTANCE: 5

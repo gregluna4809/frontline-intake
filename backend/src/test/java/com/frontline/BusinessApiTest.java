@@ -64,7 +64,7 @@ class BusinessApiTest {
     private Visit walkIn() { return visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.PHONE_ACCESS, null); }
     private Visit appointment() {
         Visit visit = visits.checkIn(Visit.VisitType.APPOINTMENT, null,
-                Visit.AppointmentCategory.REEMPLOYMENT, Visit.AppointmentType.FOLLOWUP);
+                Visit.AppointmentCategory.MANDATORY);
         visits.identify(visit.id(), 1, 0);
         return visits.route(visit.id(), 1).visit();
     }
@@ -92,7 +92,7 @@ class BusinessApiTest {
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.businessDate").value("2026-09-04"));
         at("2026-09-08T12:30:00Z");
         var simulator = new TrafficSimulator(visits, new SimulatorProperties(false, 1,
-                Map.of("APPOINTMENT", 1), Map.of("REEMPLOYMENT", 1), Map.of("INITIAL", 1)));
+                Map.of("APPOINTMENT", 1), Map.of("MANDATORY", 1)));
         simulator.start();
         simulator.tick();
         Visit visit = visits.list(null).getFirst().visit();

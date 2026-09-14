@@ -8,7 +8,7 @@ const snapshot = {
   businessDate: '2026-09-08', staff, coverage: rotation(), callOuts: [],
   visits: [
     { id: 1, ticket: 'B0001', visitType: 'WALK_IN', reason: 'PHONE_ACCESS', status: 'AT_RESOURCE', customer: { displayName: 'Demo Customer 001' } },
-    { id: 2, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: 'REEMPLOYMENT', status: 'CLOSED', assignedStaffId: 1 },
+    { id: 2, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: 'MANDATORY', status: 'CLOSED', assignedStaffId: 1 },
   ],
   resources: [{ id: 1, label: 'Phone 01', type: 'PHONE', status: 'OCCUPIED', ticket: 'B0001' }],
 };

@@ -8,7 +8,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - PostgreSQL 17 in Docker Compose; Flyway creates Customer, Resource, Visit, and VisitEvent tables.
 - 50 synthetic customers, 6 phones, 8 computers, and 2 stations.
 - React 19 / Vite 8 kiosk, front-desk, resource-room, supervisor, and my-queue routes.
-- Kiosk starts with Walk-In or Appointment. Walk-ins choose a reason; appointments choose REEMPLOYMENT, CAREER_SERVICES, or VETERANS, plus Initial or Follow-up.
+- Kiosk starts with Walk-In or Appointment. Walk-ins choose a reason; appointments choose Mandatory or Job Search Assistance. Initial/Follow-up is derived when the front desk identifies the customer.
 - Check-in creates a CHECKED_IN visit and its VisitEvent in one transaction. Walk-ins use B tickets; appointments use A tickets with an independent sequence.
 - Front desk lists CHECKED_IN and IDENTIFIED visits in arrival order and refreshes every 5 seconds.
 - Select a ticket, search and attach a customer, then route the visit. The panel shows the attached name/ID and routing result.
@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–10 are implemented. No login, app Dockerfile, or deployment configuration is included.
+Steps 1–11 are implemented. No login, app Dockerfile, or deployment configuration is included.
 
 ## Run on Windows PowerShell
 
@@ -70,7 +70,7 @@ The default database credential is for this synthetic local demo. PostgreSQL is 
 
 | Method | Path | Result |
 | --- | --- | --- |
-| POST | /api/visits | Body: `{"visitType":"WALK_IN","reason":"PHONE_ACCESS"}` or `{"visitType":"APPOINTMENT","appointmentCategory":"REEMPLOYMENT","appointmentType":"INITIAL"}`; returns 201 with visit and Location header |
+| POST | /api/visits | Body: `{"visitType":"WALK_IN","reason":"PHONE_ACCESS"}` or `{"visitType":"APPOINTMENT","appointmentCategory":"MANDATORY"}`; returns 201 with visit and Location header |
 | GET | /api/visits?status=CHECKED_IN | Current business-day visits matching the status, oldest first; also supports IDENTIFIED, WAITING_STAFF, and WAITING_RESOURCE |
 | GET | /api/visits | Current business-day visits, oldest first; optional `businessDate=YYYY-MM-DD` selects another day |
 | GET | /api/visits/{id} | Object with `visit`, `events`, `customer`, `resource`, and `requiredResourceType`; includes an ETag |
@@ -86,7 +86,7 @@ The default database credential is for this synthetic local demo. PostgreSQL is 
 
 Allowed reasons: PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER. Invalid request values return 400; an unknown visit returns 404. Unknown JSON fields are rejected. Identify, route, assign, assign-staff, close, and left require an `If-Match` header containing the quoted version, such as `"0"`. Their response includes the updated detail and ETag. Missing versions return 428, malformed versions 400, stale versions 412, and invalid transitions 409. No mutation occurs on rejection.
 
-Creation requires visitType. WALK_IN requires reason and no appointmentCategory or appointmentType; APPOINTMENT requires appointmentCategory and appointmentType, with no reason. Appointment types are INITIAL and FOLLOWUP. Appointment status starts SCHEDULED and is not accepted from the client. Missing required fields, mixed non-null fields, and unknown category codes return 400. Optional null fields are treated as absent. Categories are REEMPLOYMENT, CAREER_SERVICES, and VETERANS.
+Creation requires visitType. WALK_IN requires reason and no appointmentCategory; APPOINTMENT requires appointmentCategory and no reason. Only MANDATORY and JOB_SEARCH_ASSISTANCE category codes are accepted. New visits start with appointmentType null; appointment status starts SCHEDULED for appointments. Both appointmentType (including explicit null) and appointmentStatus are rejected as unknown request fields. Missing required fields, mixed non-null fields, and unknown category codes return 400. Optional null reason/category values are treated as absent. At identify, an appointment is classified INITIAL when the attached customer has no other appointment visit, otherwise FOLLOWUP; walk-ins remain unclassified.
 
 Queue items preserve the visit fields, including appointmentType, appointmentStatus, and assignedStaffId, at the top level and add customer, waitingSince, and requiredResourceType. waitingSince is the most recent event entering the current WAITING_STAFF or WAITING_RESOURCE status, so waiting time excludes time spent at the kiosk/front desk. Timers update every second; queues reload every five seconds.
 
@@ -164,6 +164,16 @@ Visit detail and identify responses now include `missedAppointment`: the custome
 
 No migration is required: the existing appointment-status enum and database check already include both FTR values. Tests cover eligibility exclusions, one-time rollover and snapshot preservation, FTR/contact event rollback, request preconditions, concurrent reports, customer-history selection, and front-desk notice visibility and reload behavior.
 
+## Step 11: derive appointment classification and correct categories
+
+Check-in accepts only visitType, reason (walk-ins), and appointmentCategory (appointments). The kiosk no longer asks for Initial/Follow-up, and neither kiosk nor simulator supplies appointmentType. Any appointmentType field in a check-in request, including null, returns 400. This is a breaking request-contract change for older clients.
+
+Customer identification derives appointmentType in the same guarded database update as customer attachment: INITIAL if no other APPOINTMENT visit belongs to that customer, FOLLOWUP otherwise. History spans every business date and status and excludes the current visit. Walk-in history does not count, and walk-ins keep appointmentType null. The existing transaction lock serializes competing identifications, so two first appointments identified concurrently for the same customer produce one INITIAL and one FOLLOWUP. An event failure rolls back classification, customer attachment, and version together. Rescheduling continues to preserve the original appointment classification.
+
+Migration V9 permits unclassified appointments while retaining the restriction that walk-ins cannot have appointmentType. Existing classification values are preserved; identifying any still-unidentified appointment recalculates its type. All existing synthetic appointment categories, including REEMPLOYMENT, CAREER_SERVICES, VETERANS, and older text labels, become MANDATORY. A new database check permits only MANDATORY and JOB_SEARCH_ASSISTANCE. Saved snapshots remain immutable historical records. Flyway applies V9 on backend startup; validation used disposable test databases.
+
+The kiosk offers Mandatory and Job Search Assistance. Simulator category weights are MANDATORY 95 and JOB_SEARCH_ASSISTANCE 5; the obsolete appointmentTypeWeights configuration is removed. Simulator visits remain unclassified until identification. Tests verify both accepted categories, legacy-category rejection, null classification at check-in, rejected client classification, first/repeat appointment history, concurrent identification, transactional rollback, migration remapping, and all 100 weighted category draw positions (95/5) without statistical flakiness.
+
 ## Simplest choices where the spec is silent
 
 - Spring JDBC and parameterized SQL; Flyway owns the schema. SQL names use snake_case; Java and JSON retain the specified camelCase names.
@@ -173,7 +183,7 @@ No migration is required: the existing appointment-status enum and database chec
 - Customer names are Demo Customer 001 through Demo Customer 050. Languages cycle EN/ES/OTHER; every fifth record has veteran=true. These are synthetic values.
 - All resources start FREE and use labels Phone 01, Computer 01, and Station 01, numbered within each type.
 - Plain React with JavaScript, system fonts, npm, and a Vite API proxy. The root URL shows the kiosk.
-- Migration V3 introduced appointment fields and statuses; V4 adds the independent appointment ticket sequence. Prior migrations and existing visit records are preserved. New appointment creation accepts only the three category codes above; legacy category labels remain readable.
+- Migration V3 introduced appointment fields and statuses; V4 adds the independent appointment ticket sequence. Prior migrations and existing visit records are preserved. Migration V9 replaces the legacy categories with the two codes above. Frozen snapshots retain their previously captured values.
 - A selected visit is retained in the `/front-desk?visit=...` URL so identification can be resumed after a refresh. Identifying changes the row label from Needs ID to Ready to route; the visit remains in the queue and can be resumed.
 - Front-desk mutation failures require reloading the selected visit before retrying. The supervisor, my-queue, and resource-room screens refresh after mutations and failures. Resource-room actions stay disabled until both inventory and waiting-list reloads succeed.
 - Resource-room events use actor RESOURCE_ROOM, appointment events APPOINTMENTS, and front-desk events FRONT_DESK. No schema migration is needed for step 3.

@@ -32,7 +32,7 @@ public record Visit(
     }
     public enum AppointmentType { INITIAL, FOLLOWUP }
     public enum AppointmentStatus { SCHEDULED, RESCHEDULED, NOT_ATTENDED_FTR, FTR_REPORTED }
-    public enum AppointmentCategory { REEMPLOYMENT, CAREER_SERVICES, VETERANS }
+    public enum AppointmentCategory { MANDATORY, JOB_SEARCH_ASSISTANCE }
     public enum Reason {
         PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES,
         BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER

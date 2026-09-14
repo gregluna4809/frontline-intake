@@ -22,14 +22,14 @@ public class VisitRepository {
     }
 
     public Visit create(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory,
-                        Visit.AppointmentType appointmentType, Visit.AppointmentStatus appointmentStatus, LocalDate businessDate) {
+                        Visit.AppointmentStatus appointmentStatus, LocalDate businessDate) {
         boolean appointment = visitType == Visit.VisitType.APPOINTMENT;
         return jdbc.sql("""
                 WITH ticket_number AS (SELECT nextval(CAST(:sequence AS regclass)) AS value)
                 INSERT INTO visit (ticket, visit_type, reason, appointment_category, appointment_type,
                                    appointment_status, status, created_at, version, business_date)
                 SELECT :prefix || lpad(value::text, greatest(4, length(value::text)), '0'),
-                       :visitType, :reason, :category, :appointmentType, :appointmentStatus, 'CHECKED_IN', CURRENT_TIMESTAMP, 0, :businessDate
+                       :visitType, :reason, :category, NULL, :appointmentStatus, 'CHECKED_IN', CURRENT_TIMESTAMP, 0, :businessDate
                 FROM ticket_number
                 RETURNING *
                 """)
@@ -39,7 +39,6 @@ public class VisitRepository {
                 .param("visitType", visitType.name())
                 .param("reason", reason == null ? null : reason.name(), Types.VARCHAR)
                 .param("category", appointmentCategory == null ? null : appointmentCategory.name(), Types.VARCHAR)
-                .param("appointmentType", appointmentType == null ? null : appointmentType.name(), Types.VARCHAR)
                 .param("appointmentStatus", appointmentStatus == null ? null : appointmentStatus.name(), Types.VARCHAR)
                 .query(this::mapVisit)
                 .single();
@@ -115,6 +114,11 @@ public class VisitRepository {
         return jdbc.sql("""
                 UPDATE visit
                 SET status = :next, customer_id = :customerId, resource_id = :resourceId,
+                    appointment_type = CASE WHEN :next = 'IDENTIFIED' AND visit_type = 'APPOINTMENT'
+                        THEN CASE WHEN EXISTS (
+                            SELECT 1 FROM visit history WHERE history.customer_id = :customerId
+                                AND history.visit_type = 'APPOINTMENT' AND history.id <> :id
+                        ) THEN 'FOLLOWUP' ELSE 'INITIAL' END ELSE appointment_type END,
                     version = version + 1,
                     closed_at = CASE WHEN :next IN ('CLOSED', 'LEFT') THEN CURRENT_TIMESTAMP ELSE closed_at END
                 WHERE id = :id AND version = :version AND status = :previous

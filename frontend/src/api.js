@@ -29,9 +29,8 @@ export function reasonLabel(value) {
 }
 
 export const appointmentCategories = [
-  ['REEMPLOYMENT', 'Reemployment'],
-  ['CAREER_SERVICES', 'Career Services'],
-  ['VETERANS', 'Veterans'],
+  ['MANDATORY', 'Mandatory'],
+  ['JOB_SEARCH_ASSISTANCE', 'Job Search Assistance'],
 ];
 
 export function appointmentCategoryLabel(value) {
