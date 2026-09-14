@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–14 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend now requires JWT authentication for staff APIs; frontend login integration is not included in Step 14.
+Steps 1–15 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; frontend login integration remains pending.
 
 ## Run on Windows PowerShell
 
@@ -224,7 +224,7 @@ Only these method/path pairs are public:
 - `GET /api/snapshot` (including its optional date query)
 - `POST /api/auth/login`
 
-Every other endpoint requires `Authorization: Bearer <token>` and returns 401 without a valid token. All five roles have the same access in this step; role enforcement is Step 15. Existing domain rules, such as only assigning appointments to LSRs, still apply. A supplied invalid bearer token returns 401 even on a public endpoint; omit the header for anonymous access.
+Every other endpoint requires `Authorization: Bearer <token>` and returns 401 without a valid token. Step 14 established authentication; Step 15 adds the role restrictions below. Existing domain rules, such as only assigning appointments to LSRs, still apply. A supplied invalid bearer token returns 401 even on a public endpoint; omit the header for anonymous access.
 
 Example from PowerShell with the backend running:
 
@@ -237,7 +237,27 @@ Invoke-RestMethod -Uri http://127.0.0.1:8080/api/staff -Headers $authHeaders
 
 Step 14 implements backend infrastructure. The current frontend has no login/token handling, so live staff screens receive 401 until that integration is added. Public check-in, business status, and snapshot APIs remain available anonymously.
 
-Tests cover login and claims for all ten accounts and all five roles, security-context claims, anonymous access boundaries, malformed/tampered/expired tokens, wrong issuers, stateless requests, BCrypt seeds, uniqueness/foreign keys, and migration of additional preexisting staff. Existing API regressions use an authenticated test user while retaining the security filters.
+Tests cover login and claims for all ten accounts and all five roles, security-context claims, anonymous access boundaries, malformed/tampered/expired tokens, wrong issuers, stateless requests, BCrypt seeds, uniqueness/foreign keys, and migration of additional preexisting staff. Existing API regressions now use a signed Center Manager token while retaining the security filters.
+
+## Step 15: role-based authorization enforcement
+
+The existing JWT `role` and `staffId` claims determine API permissions. No migration or new environment variable is needed. The following POST endpoints use Spring Security's [request authorization rules](https://docs.spring.io/spring-security/reference/6.5/servlet/authorization/authorize-http-requests.html):
+
+| Endpoint | Allowed roles |
+| --- | --- |
+| `/api/visits/{id}/identify`, `/api/visits/{id}/route` | CLERK, CENTER_MANAGER |
+| `/api/visits/{id}/assign` | LSR, CENTER_MANAGER |
+| `/api/visits/{id}/close`, `/api/visits/{id}/left` | LSR, CENTER_MANAGER; appointment ownership rule below |
+| `/api/visits/{id}/assign-staff`, `/api/visits/{id}/report-ftr`, `/api/visits/{id}/reschedule` | SUPERVISING_LSR, CENTER_MANAGER |
+| `/api/call-outs` | SUPERVISING_LSR, CENTER_MANAGER |
+
+An authenticated caller with a disallowed role receives 403 with an `application/problem+json` body whose `detail` is `Your role is not permitted to perform this action.` Administrator has no implicit override. Missing or invalid authentication still returns 401. Other endpoints retain Step 14's access rules, including the four public method/path pairs.
+
+For close and left, an LSR can act on an APPOINTMENT only when its current `assignedStaffId` equals the JWT `staffId`. Other LSRs' appointments and unassigned appointments return 403 with `LSRs may only close or mark left appointments assigned to themselves.` Center Managers can act on any appointment, and walk-ins have no ownership requirement. Ownership is checked inside the mutation transaction under the existing business-day lock, before version/status validation; reassignment revokes the former owner's access even with a previously valid If-Match value. Rejections roll back transaction changes. Existing status and If-Match rules still apply to authorized callers.
+
+`GET /api/visits?status=WAITING_STAFF` filters an LSR's results in SQL to their JWT staff ID. This applies to both the default business date and an explicit `businessDate`; query parameters such as `staffId`, `assignedStaffId`, or `role` cannot override the scope. Other roles see all matching visits, including unassigned appointments. Queries without that explicit status retain their previous behavior. `GET /api/rotation`, `/api/call-outs`, `/api/staff`, and `/api/resources` remain available to all authenticated roles with no added scoping; rotation and call-out reads still require their `date` parameter.
+
+The authorization suite logs in through the real API and tests all 45 restricted endpoint/role combinations, unchanged visits after denial, own/other/unassigned appointment access, walk-in access, manager access, stale ownership and concurrent reassignment, query-parameter spoofing, business-date filtering, and shared reads for all five roles. The broader workflow tests use a signed Center Manager JWT, including concurrent requests. Frontend login and role-aware controls remain pending.
 
 ## Simplest choices where the spec is silent
 

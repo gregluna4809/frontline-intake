@@ -86,6 +86,10 @@ public class VisitRepository {
     }
 
     public List<VisitQueueItem> findAll(Visit.Status status, LocalDate businessDate) {
+        return findAll(status, businessDate, null);
+    }
+
+    public List<VisitQueueItem> findAll(Visit.Status status, LocalDate businessDate, Long assignedStaffId) {
         String sql = """
                 SELECT v.*, c.display_name, c.language, c.veteran,
                     (SELECT max(e.created_at) FROM visit_event e
@@ -96,9 +100,11 @@ public class VisitRepository {
                 WHERE v.business_date = :businessDate
                 """;
         if (status != null) sql += " AND v.status = :status";
+        if (assignedStaffId != null) sql += " AND v.assigned_staff_id = :assignedStaffId";
         sql += " ORDER BY v.created_at, v.id";
         var query = jdbc.sql(sql).param("businessDate", businessDate);
         if (status != null) query.param("status", status.name());
+        if (assignedStaffId != null) query.param("assignedStaffId", assignedStaffId);
         return query.query((rs, row) -> {
             Visit visit = mapVisit(rs, row);
             Customer customer = visit.customerId() == null ? null : new Customer(

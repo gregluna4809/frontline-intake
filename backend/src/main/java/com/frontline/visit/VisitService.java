@@ -70,7 +70,12 @@ public class VisitService {
 
     @Transactional(readOnly = true)
     public List<VisitQueueItem> list(Visit.Status status, LocalDate businessDate) {
-        return repository.findAll(status, businessDate == null ? calendar.currentBusinessDate() : businessDate);
+        return list(status, businessDate, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<VisitQueueItem> list(Visit.Status status, LocalDate businessDate, Long assignedStaffId) {
+        return repository.findAll(status, businessDate == null ? calendar.currentBusinessDate() : businessDate, assignedStaffId);
     }
 
     @Transactional(readOnly = true)
@@ -102,7 +107,13 @@ public class VisitService {
 
     @Transactional
     public VisitDetail close(long id, long expectedVersion) {
-        Visit previous = requireStatus(id, expectedVersion, Visit.Status.AT_RESOURCE, Visit.Status.WAITING_STAFF);
+        return close(id, expectedVersion, null);
+    }
+
+    @Transactional
+    public VisitDetail close(long id, long expectedVersion, Long callerLsrId) {
+        Visit previous = requireStatus(requireVersion(id, expectedVersion, callerLsrId),
+                Visit.Status.AT_RESOURCE, Visit.Status.WAITING_STAFF);
         return finish(previous, Visit.Status.CLOSED);
     }
 
@@ -124,11 +135,24 @@ public class VisitService {
 
     @Transactional
     public VisitDetail left(long id, long expectedVersion) {
-        Visit previous = requireVersion(id, expectedVersion);
+        return left(id, expectedVersion, null);
+    }
+
+    @Transactional
+    public VisitDetail left(long id, long expectedVersion, Long callerLsrId) {
+        Visit previous = requireVersion(id, expectedVersion, callerLsrId);
         if (previous.status() == Visit.Status.CLOSED || previous.status() == Visit.Status.LEFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A completed visit cannot be marked left.");
         }
         return finish(previous, Visit.Status.LEFT);
+    }
+
+    private void requireAppointmentOwner(Visit visit, Long callerLsrId) {
+        if (callerLsrId != null && visit.visitType() == Visit.VisitType.APPOINTMENT
+                && !callerLsrId.equals(visit.assignedStaffId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "LSRs may only close or mark left appointments assigned to themselves.");
+        }
     }
 
     @Transactional
@@ -190,7 +214,10 @@ public class VisitService {
     }
 
     private Visit requireStatus(long id, long expectedVersion, Visit.Status... allowed) {
-        Visit visit = requireVersion(id, expectedVersion);
+        return requireStatus(requireVersion(id, expectedVersion), allowed);
+    }
+
+    private Visit requireStatus(Visit visit, Visit.Status... allowed) {
         if (Arrays.stream(allowed).noneMatch(status -> visit.status() == status)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This action requires " + Arrays.toString(allowed) + ". Reload the visit to see its current status.");
@@ -199,8 +226,13 @@ public class VisitService {
     }
 
     private Visit requireVersion(long id, long expectedVersion) {
+        return requireVersion(id, expectedVersion, null);
+    }
+
+    private Visit requireVersion(long id, long expectedVersion, Long callerLsrId) {
         days.resetResourcesForOpening();
         Visit visit = findVisit(id);
+        requireAppointmentOwner(visit, callerLsrId);
         if (visit.version() != expectedVersion) throw staleVersion();
         return visit;
     }

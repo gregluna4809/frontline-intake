@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = "business.scheduling.enabled=false")
 @AutoConfigureMockMvc
-@org.springframework.security.test.context.support.WithMockUser(username = "staff1", roles = "LSR")
+@org.springframework.context.annotation.Import(AuthenticatedApiTestConfiguration.class)
 @Testcontainers
 class FtrApiTest {
     @Container @ServiceConnection
@@ -185,7 +185,6 @@ class FtrApiTest {
         Visit old = missed();
         try (var executor = Executors.newFixedThreadPool(2)) {
             Callable<Integer> report = () -> mvc.perform(post("/api/visits/{id}/report-ftr", old.id())
-                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("staff1").roles("LSR"))
                     .header("If-Match", "\"" + old.version() + "\"" )).andReturn().getResponse().getStatus();
             var results = executor.invokeAll(List.of(report, report));
             assertThat(List.of(results.get(0).get(), results.get(1).get())).containsExactlyInAnyOrder(200, 412);

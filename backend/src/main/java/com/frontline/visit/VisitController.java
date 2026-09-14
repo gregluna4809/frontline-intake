@@ -10,6 +10,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,8 +33,10 @@ public class VisitController {
 
     @GetMapping
     public List<VisitQueueItem> list(@RequestParam(required = false) Visit.Status status,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate) {
-        return service.list(status, businessDate);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate,
+            @AuthenticationPrincipal Jwt caller) {
+        Long assignedStaffId = status == Visit.Status.WAITING_STAFF ? callerLsrId(caller) : null;
+        return service.list(status, businessDate, assignedStaffId);
     }
 
     @GetMapping("/{id}")
@@ -69,8 +73,9 @@ public class VisitController {
     @PostMapping("/{id}/close")
     public ResponseEntity<VisitService.VisitDetail> close(
             @PathVariable long id,
-            @RequestHeader(value = "If-Match", required = false) String version) {
-        return response(service.close(id, expectedVersion(version)));
+            @RequestHeader(value = "If-Match", required = false) String version,
+            @AuthenticationPrincipal Jwt caller) {
+        return response(service.close(id, expectedVersion(version), callerLsrId(caller)));
     }
 
     @PostMapping("/{id}/reschedule")
@@ -108,8 +113,18 @@ public class VisitController {
     @PostMapping("/{id}/left")
     public ResponseEntity<VisitService.VisitDetail> left(
             @PathVariable long id,
-            @RequestHeader(value = "If-Match", required = false) String version) {
-        return response(service.left(id, expectedVersion(version)));
+            @RequestHeader(value = "If-Match", required = false) String version,
+            @AuthenticationPrincipal Jwt caller) {
+        return response(service.left(id, expectedVersion(version), callerLsrId(caller)));
+    }
+
+    private Long callerLsrId(Jwt caller) {
+        if (!"LSR".equals(caller.getClaimAsString("role"))) return null;
+        Number staffId = caller.getClaim("staffId");
+        if (staffId == null || staffId.longValue() <= 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "An LSR staff identity is required.");
+        }
+        return staffId.longValue();
     }
 
     public record CheckInRequest(
