@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–13 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. No login is included.
+Steps 1–14 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend now requires JWT authentication for staff APIs; frontend login integration is not included in Step 14.
 
 ## Run on Windows PowerShell
 
@@ -38,6 +38,11 @@ Prerequisites: Java 21, Node.js 22.12+ (Node 24 is supported), and Docker Deskto
 
    ```powershell
    Set-Location C:\Projects\frontline\backend
+   $jwtBytes = New-Object byte[] 32
+   $jwtRng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+   $jwtRng.GetBytes($jwtBytes)
+   $jwtRng.Dispose()
+   $env:JWT_SECRET = [Convert]::ToBase64String($jwtBytes)
    .\mvnw.cmd spring-boot:run
    ```
 
@@ -49,13 +54,13 @@ Prerequisites: Java 21, Node.js 22.12+ (Node 24 is supported), and Docker Deskto
    npm run dev
    ```
 
-4. Open http://127.0.0.1:5173/kiosk. Choose Walk-In and a reason, or Appointment, a category, and Initial or Follow-up, then check in. Open http://127.0.0.1:5173/front-desk in another tab to select the ticket, search for Demo Customer 001, attach that customer, and route the visit. Routed appointments appear at http://127.0.0.1:5173/supervisor. Assign an LSR there, then choose that person's My Queue entry in View as to view and close their appointments. Walk-ins appear at http://127.0.0.1:5173/resource-room; occupied tiles have Close/Left, and waiting entries have Assign/Left.
+4. Open http://127.0.0.1:5173/kiosk. Choose Walk-In and a reason, or Appointment and a category, then check in. The staff-screen workflow below requires frontend login integration after Step 14; use the authenticated API example below for now. Open http://127.0.0.1:5173/front-desk in another tab to select the ticket, search for Demo Customer 001, attach that customer, and route the visit. Routed appointments appear at http://127.0.0.1:5173/supervisor. Assign an LSR there, then choose that person's My Queue entry in View as to view and close their appointments. Walk-ins appear at http://127.0.0.1:5173/resource-room; occupied tiles have Close/Left, and waiting entries have Assign/Left.
 
 Stop the backend and frontend with Ctrl+C in their terminals. Stop this project's database with `docker compose stop` from the root. The named volume retains data.
 
 ## Production Docker deployment
 
-`docker-compose.prod.yml` is separate from the local development `compose.yaml` and uses the project name `frontline-prod`, with its own persistent PostgreSQL volume. Copy `.env.example` to an untracked `.env` and supply DB_USER and DB_PASSWORD; DB_NAME defaults to frontline and is used consistently by PostgreSQL and the backend JDBC URL. Missing or empty credentials fail Compose validation.
+`docker-compose.prod.yml` is separate from the local development `compose.yaml` and uses the project name `frontline-prod`, with its own persistent PostgreSQL volume. Copy `.env.example` to an untracked `.env` and supply DB_USER, DB_PASSWORD, and JWT_SECRET; DB_NAME defaults to frontline and is used consistently by PostgreSQL and the backend JDBC URL. Missing or empty credentials or JWT_SECRET fail Compose validation. Generate JWT_SECRET using the PowerShell commands above, then put that Base64 value in .env. Keep the value stable across backend restarts; replacing it invalidates existing tokens.
 
 The Dockerfiles build with Maven/Java 21 and Node 22, then run with the Java 21 JRE and nginx. Backend image builds skip tests. nginx serves the Vite output with an index.html fallback for client-side routes. Build contexts exclude local dependencies, build output, logs, and environment files.
 
@@ -79,6 +84,7 @@ Starting the backend applies pending Flyway migrations, including the one-time h
 | DB_URL | jdbc:postgresql://localhost:55432/frontline | Backend |
 | DB_USER | frontline | Backend |
 | SERVER_PORT | 8080 | Backend |
+| JWT_SECRET | Required; no default | Backend; Base64-encoded random key of at least 32 bytes |
 | API_PROXY_TARGET | http://127.0.0.1:8080 | Vite |
 
 The default database credential is for this synthetic local demo. PostgreSQL is bound to localhost. Set PowerShell environment variables in the relevant terminals to override defaults. If DB_PORT changes, update DB_URL too; if SERVER_PORT changes, update API_PROXY_TARGET in the frontend terminal. The backend uses environment variables directly; it does not load a root .env file.
@@ -190,6 +196,48 @@ Customer identification derives appointmentType in the same guarded database upd
 Migration V9 permits unclassified appointments while retaining the restriction that walk-ins cannot have appointmentType. Existing classification values are preserved; identifying any still-unidentified appointment recalculates its type. All existing synthetic appointment categories, including REEMPLOYMENT, CAREER_SERVICES, VETERANS, and older text labels, become MANDATORY. A new database check permits only MANDATORY and JOB_SEARCH_ASSISTANCE. Saved snapshots remain immutable historical records. Flyway applies V9 on backend startup; validation used disposable test databases.
 
 The kiosk offers Mandatory and Job Search Assistance. Simulator category weights are MANDATORY 95 and JOB_SEARCH_ASSISTANCE 5; the obsolete appointmentTypeWeights configuration is removed. Simulator visits remain unclassified until identification. Tests verify both accepted categories, legacy-category rejection, null classification at check-in, rejected client classification, first/repeat appointment history, concurrent identification, transactional rollback, migration remapping, and all 100 weighted category draw positions (95/5) without statistical flakiness.
+
+## Step 14: authentication infrastructure
+
+Flyway V11 retains the existing four LSRs and one Supervising LSR and adds three Clerks, one Center Manager, and one Administrator with synthetic names. It creates `user_account` with a unique, required staff foreign key, unique username, BCrypt password hash, and creation timestamp. Every staff row present when V11 runs receives exactly one account, including any extra staff created before the migration. Later staff creation does not automatically provision accounts. Existing snapshots remain unchanged and can still contain the original five staff.
+
+**Synthetic demo credentials: every seeded account uses password `demo1234`. These shared, documented credentials are not a real security boundary.** Usernames are `staff` followed by the staff ID. On an unmodified seed:
+
+| Username | Display name | Role |
+| --- | --- | --- |
+| staff1–staff4 | Demo Staff 001–004 | LSR |
+| staff5 | Demo Supervisor 001 | SUPERVISING_LSR |
+| staff6–staff8 | Demo Clerk 001–003 | CLERK |
+| staff9 | Demo Center Manager 001 | CENTER_MANAGER |
+| staff10 | Demo Administrator 001 | ADMINISTRATOR |
+
+`POST /api/auth/login` accepts `{ "username": "staff1", "password": "demo1234" }` and returns `{ "token": "<JWT>", "tokenType": "Bearer", "expiresIn": 28800 }`. Incorrect credentials return 401 with the same message for unknown users and wrong passwords; malformed input returns 400. Tokens contain `staffId`, `role`, and `displayName`, plus subject (username), issuer, issued-at, and expiry. They expire after eight hours, independently of the business calendar. Log in again after expiry; there is no refresh or server-side logout session.
+
+The signing key comes only from `JWT_SECRET`. Startup rejects missing, invalid Base64, or keys shorter than 32 decoded bytes. The local startup example generates a random key; retain it securely between restarts if existing tokens should stay valid. `.env` is read by production Compose, not by a backend started directly from PowerShell. Test resources supply a separate test-only key.
+
+Spring Security's [JWT resource-server support](https://docs.spring.io/spring-security/reference/6.5/servlet/oauth2/resource-server/jwt.html) validates HS256 signatures, issuer, and token timestamps (with its default clock-skew tolerance). Its bearer-token filter puts the JWT claims into the security context and exposes the role as `ROLE_<role>`. Authentication is stateless, with no form login, HTTP Basic, or session-cookie authentication. CSRF protection is disabled because clients explicitly send bearer headers.
+
+Only these method/path pairs are public:
+
+- `POST /api/visits`
+- `GET /api/business-status`
+- `GET /api/snapshot` (including its optional date query)
+- `POST /api/auth/login`
+
+Every other endpoint requires `Authorization: Bearer <token>` and returns 401 without a valid token. All five roles have the same access in this step; role enforcement is Step 15. Existing domain rules, such as only assigning appointments to LSRs, still apply. A supplied invalid bearer token returns 401 even on a public endpoint; omit the header for anonymous access.
+
+Example from PowerShell with the backend running:
+
+```powershell
+$loginBody = @{ username = 'staff1'; password = 'demo1234' } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/auth/login -ContentType 'application/json' -Body $loginBody
+$authHeaders = @{ Authorization = "Bearer $($login.token)" }
+Invoke-RestMethod -Uri http://127.0.0.1:8080/api/staff -Headers $authHeaders
+```
+
+Step 14 implements backend infrastructure. The current frontend has no login/token handling, so live staff screens receive 401 until that integration is added. Public check-in, business status, and snapshot APIs remain available anonymously.
+
+Tests cover login and claims for all ten accounts and all five roles, security-context claims, anonymous access boundaries, malformed/tampered/expired tokens, wrong issuers, stateless requests, BCrypt seeds, uniqueness/foreign keys, and migration of additional preexisting staff. Existing API regressions use an authenticated test user while retaining the security filters.
 
 ## Simplest choices where the spec is silent
 

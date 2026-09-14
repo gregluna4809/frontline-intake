@@ -17,6 +17,9 @@ server:
     include-message: never
     include-stacktrace: never
 
+auth:
+  jwt-secret: ${JWT_SECRET}
+
 simulator:
   enabled: false
   arrivalsPerMinute: 4

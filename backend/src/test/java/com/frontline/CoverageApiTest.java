@@ -28,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = "business.scheduling.enabled=false")
 @AutoConfigureMockMvc
+@org.springframework.security.test.context.support.WithMockUser(username = "staff1", roles = "LSR")
 @Testcontainers
 class CoverageApiTest {
     @Container @ServiceConnection

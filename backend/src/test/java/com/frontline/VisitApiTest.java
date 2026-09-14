@@ -36,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = "business.scheduling.enabled=false")
 @AutoConfigureMockMvc
+@org.springframework.security.test.context.support.WithMockUser(username = "staff1", roles = "LSR")
 @Testcontainers
 class VisitApiTest {
     @Container
@@ -711,15 +712,15 @@ class VisitApiTest {
     }
     @Test
     void staffMigrationSeedsRolesAndEndpointListsInOrder() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff", Integer.class)).isEqualTo(10);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'LSR'", Integer.class)).isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'SUPERVISING_LSR'", Integer.class)).isEqualTo(1);
         mvc.perform(get("/api/staff")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(5))
-                .andExpect(jsonPath("$[0].displayName").value("Demo Staff 001"))
-                .andExpect(jsonPath("$[3].displayName").value("Demo Staff 004"))
-                .andExpect(jsonPath("$[4].role").value("SUPERVISING_LSR"))
-                .andExpect(jsonPath("$[4].displayName").value("Demo Supervisor 001"));
+                .andExpect(jsonPath("$.length()").value(10))
+                .andExpect(jsonPath("$[5].displayName").value("Demo Staff 001"))
+                .andExpect(jsonPath("$[8].displayName").value("Demo Staff 004"))
+                .andExpect(jsonPath("$[9].role").value("SUPERVISING_LSR"))
+                .andExpect(jsonPath("$[9].displayName").value("Demo Supervisor 001"));
     }
 
     @Test
@@ -1008,7 +1009,7 @@ class VisitApiTest {
                 .isEqualTo("SCHEDULED");
         assertThat(jdbc.queryForObject("SELECT appointment_type FROM step5_upgrade.visit WHERE ticket = 'B0001'", String.class))
                 .isNull();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM step5_upgrade.staff", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM step5_upgrade.staff", Integer.class)).isEqualTo(10);
     }
 
     @Test
