@@ -1089,7 +1089,7 @@ class VisitApiTest {
                 """);
         org.flywaydb.core.Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                .schemas(schema).defaultSchema(schema).load().migrate();
+                .schemas(schema).defaultSchema(schema).target("9").load().migrate();
         assertThat(jdbc.queryForList("SELECT appointment_category FROM step11_upgrade.visit WHERE visit_type = 'APPOINTMENT'", String.class))
                 .containsExactly("MANDATORY", "MANDATORY", "MANDATORY");
         assertThat(jdbc.queryForObject("SELECT appointment_type FROM step11_upgrade.visit WHERE ticket = 'B0001'", String.class)).isNull();

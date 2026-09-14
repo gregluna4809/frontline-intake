@@ -205,7 +205,7 @@ class BusinessApiTest {
                 """);
         org.flywaydb.core.Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                .schemas(schema).defaultSchema(schema).load().migrate();
+                .schemas(schema).defaultSchema(schema).target("7").load().migrate();
         assertThat(jdbc.queryForObject("SELECT business_date FROM step8_upgrade.visit", LocalDate.class))
                 .isEqualTo(LocalDate.parse("2026-09-07"));
         assertThat(jdbc.queryForObject("SELECT ticket FROM step8_upgrade.visit", String.class)).isEqualTo("B0001");
