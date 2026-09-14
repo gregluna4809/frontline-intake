@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–11 are implemented. No login, app Dockerfile, or deployment configuration is included.
+Steps 1–13 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. No login is included.
 
 ## Run on Windows PowerShell
 
@@ -52,6 +52,23 @@ Prerequisites: Java 21, Node.js 22.12+ (Node 24 is supported), and Docker Deskto
 4. Open http://127.0.0.1:5173/kiosk. Choose Walk-In and a reason, or Appointment, a category, and Initial or Follow-up, then check in. Open http://127.0.0.1:5173/front-desk in another tab to select the ticket, search for Demo Customer 001, attach that customer, and route the visit. Routed appointments appear at http://127.0.0.1:5173/supervisor. Assign an LSR there, then choose that person's My Queue entry in View as to view and close their appointments. Walk-ins appear at http://127.0.0.1:5173/resource-room; occupied tiles have Close/Left, and waiting entries have Assign/Left.
 
 Stop the backend and frontend with Ctrl+C in their terminals. Stop this project's database with `docker compose stop` from the root. The named volume retains data.
+
+## Production Docker deployment
+
+`docker-compose.prod.yml` is separate from the local development `compose.yaml` and uses the project name `frontline-prod`, with its own persistent PostgreSQL volume. Copy `.env.example` to an untracked `.env` and supply DB_USER and DB_PASSWORD; DB_NAME defaults to frontline and is used consistently by PostgreSQL and the backend JDBC URL. Missing or empty credentials fail Compose validation.
+
+The Dockerfiles build with Maven/Java 21 and Node 22, then run with the Java 21 JRE and nginx. Backend image builds skip tests. nginx serves the Vite output with an index.html fallback for client-side routes. Build contexts exclude local dependencies, build output, logs, and environment files.
+
+The external Docker network `edge` must already exist. Caddy on that network must preserve and route `/api/*` to `frontline-backend:8080`, and all other requests to `frontline-frontend:80`. This file does not configure or start Caddy. PostgreSQL joins only the internal default network; the backend joins default and edge; the frontend joins only edge. No service publishes host ports.
+
+After configuring `.env` and Caddy, build and start using the explicit production file:
+
+```powershell
+docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Starting the backend applies pending Flyway migrations, including the one-time historical seed. The backend waits for PostgreSQL's health check before starting. All services use the unless-stopped restart policy; the database volume persists across container replacements.
 
 ## Configuration
 

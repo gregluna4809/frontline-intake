@@ -1,0 +1,53 @@
+# Caddy owns the published ports and routes /api/* to frontline-backend:8080,
+# and other requests to frontline-frontend:80 on the existing edge network.
+name: frontline-prod
+services:
+  frontline-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:?Set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:-frontline}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  frontline-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://frontline-db:5432/${DB_NAME:-frontline}
+      DB_USER: ${DB_USER:?Set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    depends_on:
+      frontline-db:
+        condition: service_healthy
+    networks:
+      - default
+      - edge
+
+  frontline-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - edge
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    internal: true
+  edge:
+    external: true
