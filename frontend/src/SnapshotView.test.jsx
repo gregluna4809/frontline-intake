@@ -1,7 +1,8 @@
-import { saveAuth } from './auth.js';
+import { getAuth, saveAuth } from './auth.js';
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
 import { businessStatus, staff, rotation, ok } from './testQueues.js';
 
@@ -37,6 +38,10 @@ test.each(['/kiosk', '/front-desk', '/supervisor', '/my-queue?staff=1', '/resour
     const { fetchMock } = mockBusiness();
     render(<App />);
     await screen.findByRole('table');
+    expect(screen.getByText('Demo Manager')).toBeTruthy();
+    expect(screen.getByText('Center Manager')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Staff login' })).toBeNull();
     expect(screen.getByRole('status').textContent).toContain("2026-09-08's final activity");
     expect(screen.queryAllByRole('button').filter(button => button.textContent !== 'Logout')).toHaveLength(0);
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
@@ -92,4 +97,56 @@ test('snapshot load failure never falls back to interactive screens', async () =
   expect(screen.queryAllByRole('button').filter(button => button.textContent !== 'Logout')).toHaveLength(0);
   expect(screen.queryAllByRole('radio')).toHaveLength(0);
   expect(screen.getByRole('status').textContent).toContain('Career center is closed');
+});
+
+test.each([businessStatus, closed])('public kiosk offers working Staff login access when isOpen=$isOpen', async status => {
+  sessionStorage.clear();
+  const { fetchMock } = mockBusiness(status);
+  render(<App />);
+  // Available immediately, before business-status or snapshot loading completes.
+  const link = screen.getByRole('link', { name: 'Staff login' });
+  expect(link.getAttribute('href')).toBe('/login');
+  if (status.isOpen) await screen.findByRole('button', { name: 'Check in' });
+  else await screen.findByRole('table');
+  await userEvent.setup().click(link);
+  expect(await screen.findByRole('heading', { name: 'Log in to Frontline' })).toBeTruthy();
+  expect(window.location.pathname).toBe('/login');
+  expect(screen.getByLabelText('Username').disabled).toBe(false);
+  expect(screen.queryByText(/Career center is closed/)).toBeNull();
+  expect(fetchMock.mock.calls.every(([path]) => path === '/api/business-status' || path.startsWith('/api/snapshot?'))).toBe(true);
+});
+
+test.each(['/kiosk', '/front-desk'])('closed-hours identity and Logout work from %s', async path => {
+  window.history.replaceState({}, '', path);
+  mockBusiness();
+  render(<App />);
+  await screen.findByRole('table');
+  expect(screen.getByText('Demo Manager')).toBeTruthy();
+  expect(screen.getByText('Center Manager')).toBeTruthy();
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Logout' }));
+  expect(await screen.findByRole('heading', { name: 'Log in to Frontline' })).toBeTruthy();
+  expect(getAuth()).toBeNull();
+  expect(screen.getByRole('link', { name: 'Staff login' })).toBeTruthy();
+});
+
+test.each([true, false])('login and admin remain functional without consulting business hours (isOpen=%s)', async isOpen => {
+  sessionStorage.clear();
+  window.history.replaceState({}, '', '/login');
+  const fetchMock = vi.fn(async path => {
+    if (path === '/api/business-status') return ok({ ...closed, isOpen });
+    if (path === '/api/auth/login') return ok({ token: 'admin-token', staffId: 10, role: 'ADMINISTRATOR', displayName: 'Demo Administrator' });
+    throw new Error('Unexpected request: ' + path);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<App />);
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText('Username'), 'staff10');
+  await user.type(screen.getByLabelText('Password'), 'demo1234');
+  await user.click(screen.getByRole('button', { name: 'Log in' }));
+  expect(await screen.findByRole('heading', { name: 'Admin console — coming soon.' })).toBeTruthy();
+  expect(window.location.pathname).toBe('/admin');
+  expect(screen.getByText('Demo Administrator')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy();
+  expect(screen.queryByText(/Career center is closed/)).toBeNull();
+  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/auth/login']);
 });

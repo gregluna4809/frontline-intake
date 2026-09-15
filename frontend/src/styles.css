@@ -170,6 +170,8 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .ftr-notice { padding: 14px; border-left: 4px solid #a76b08; background: #fff0ca; color: #593e0d; border-radius: 4px; }
 
 .staff-identity { display: flex; align-items: center; gap: 22px; }
+.staff-login { color: #526a5d; font-size: 13px; padding: 10px 0; text-underline-offset: 3px; }
+.staff-login:hover { color: #173c39; }
 .staff-identity strong { display: block; font-size: 14px; }
 .staff-identity small { display: block; color: #60716b; margin-top: 5px; }
 .staff-nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px max(24px, calc((100vw - 1120px) / 2)); background: #fff; border-bottom: 1px solid #dce4df; }

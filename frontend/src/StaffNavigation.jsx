@@ -10,15 +10,18 @@ export function Brand({ path = '/kiosk' }) {
   }}><span className="brand-mark">F</span><span>Frontline<small>Career Center</small></span></a>;
 }
 
-export default function StaffNavigation({ auth, path }) {
+export default function StaffNavigation({ auth, path, kiosk = false }) {
   return <>
     <header className="topbar">
-      <Brand path={landingPage(auth.role)} />
-      <div className="staff-identity"><div><strong>{auth.displayName}</strong><small>{roleLabels[auth.role]}</small></div>
+      <Brand path={kiosk ? '/kiosk' : auth ? landingPage(auth.role) : '/login'} />
+      {auth ? <div className="staff-identity"><div><strong>{auth.displayName}</strong><small>{roleLabels[auth.role]}</small></div>
         <button className="secondary" onClick={logout}>Logout</button>
-      </div>
+      </div> : <a className="staff-login" href="/login" onClick={event => {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault(); navigate('/login');
+      }}>Staff login</a>}
     </header>
-    {auth.role !== 'ADMINISTRATOR' && <nav className="staff-nav" aria-label="Staff navigation">
+    {auth && !kiosk && auth.role !== 'ADMINISTRATOR' && <nav className="staff-nav" aria-label="Staff navigation">
       {rolePaths[auth.role].map(href => <a key={href} href={href} aria-current={path === href ? 'page' : undefined}
         onClick={event => {
           if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;

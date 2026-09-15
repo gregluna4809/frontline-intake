@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { reasons, reasonLabel, appointmentCategories, appointmentCategoryLabel, request } from './api.js';
 import Supervisor from './Supervisor.jsx';
 import MyQueue from './MyQueue.jsx';
-import StaffNavigation, { Brand } from './StaffNavigation.jsx';
+import StaffNavigation from './StaffNavigation.jsx';
 import StaffQueueSelector from './StaffQueueSelector.jsx';
 import Login from './Login.jsx';
 import { landingPage, navigate, rolePaths, useAuth } from './auth.js';
@@ -101,6 +101,8 @@ function Kiosk() {
   );
 }
 
+// Only daily operations freeze: Kiosk, Front desk, Supervisor, My Queue, Resource room.
+// Login and admin/staff management (Step 17) must remain outside this component.
 function BusinessScreen({ screen, auth, staffId }) {
   const business = useBusinessView();
   const manager = auth?.role === 'CENTER_MANAGER';
@@ -152,8 +154,7 @@ export default function App() {
 
   return <>
     <div className="demo-banner">Synthetic demo — no real data</div>
-    {!kiosk && auth ? <StaffNavigation auth={auth} path={url.pathname} /> :
-      <header className="topbar"><Brand path={kiosk ? '/kiosk' : '/login'} /></header>}
+    <StaffNavigation auth={auth} path={url.pathname} kiosk={kiosk} />
     {redirect ? <main><p>Opening your workspace...</p></main> :
       login ? <main><Login expired={url.searchParams.get('expired') === '1'} /></main> :
       screen === 'admin' ? <main><section><h1>Admin console — coming soon.</h1></section></main> :

@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–16 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; staff log in through /login and receive role-based navigation.
+Steps 1–16b are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; staff log in through /login and receive role-based navigation.
 
 ## Run on Windows PowerShell
 
@@ -277,9 +277,17 @@ The API client reads the current stored token for each authenticated request and
 
 LSRs automatically load their own My Queue using the logged-in staff ID. They have no staff picker, cannot override identity using `?staff=...`, and do not see Reschedule. Center Managers have a Staff member picker for LSR queues, retain selection in the URL, and can close or reschedule those appointments. After hours, the same identity and navigation rules apply to snapshots, and managers can select staff from the frozen snapshot.
 
-`/` and `/kiosk` remain fully public, with no staff identity, staff navigation, Logout, or simulator controls—even if the tab has a stored staff session. Public check-in, business-status, snapshot, and login calls omit the stored token. Login and the admin placeholder do not depend on business hours. Operational staff screens retain the existing closed-hours behavior and simulator controls. The backend remains the authorization boundary; changing browser state does not change server permissions.
+`/` and `/kiosk` remain fully public, with no staff navigation or simulator controls. The header always offers Staff login when signed out, or the current name, role, and Logout when signed in, including during closed hours. Public check-in, business-status, snapshot, and login calls omit the stored token. Login and the admin placeholder do not depend on business hours. Operational staff screens retain the existing closed-hours behavior and simulator controls. The backend remains the authorization boundary; changing browser state does not change server permissions.
 
 Tests cover login landings and links for all five roles, invalid credentials and incomplete responses, logout and route guards, forged staff selection, manager selection and reload, background and mutation 401s, delayed-response races, 403 handling, public kiosk isolation, and retained queue/snapshot behavior. Backend tests verify that every account's login identity fields match the signed JWT claims.
+
+## Step 16b: persistent login access and closed-hours exemptions
+
+Every screen uses the same header. When signed out, a small **Staff login** link opens `/login`; it is visible on the kiosk, closed-hours snapshots, and while business status or snapshot data is loading or unavailable. When signed in, that area instead shows the current display name, role, and **Logout**. These controls remain functional during closed hours. The kiosk remains public and does not show operational navigation or simulator controls.
+
+**Closed-hours rule for Step 17 and later:** staff management is not a daily-operations screen and must work identically whether the center is open or closed. `/login` and the admin console must stay outside `BusinessScreen` and its business-hours/snapshot checks. They must not depend on business-status or snapshot requests. Only **Kiosk, Front desk, Supervisor, My Queue, and Resource room** freeze during closed hours. Authentication and role authorization still apply to admin functions.
+
+Tests verify login-link access from open and closed kiosks, identity display on all five closed operational screens, closed-hours logout, and successful login into the admin placeholder without consulting business hours.
 
 ## Simplest choices where the spec is silent
 

@@ -169,7 +169,12 @@ test.each([false, true])('kiosk stays public without staff navigation (stored se
   render(<App />);
   expect(await screen.findByRole('button', { name: 'Check in' })).toBeTruthy();
   expect(screen.queryByRole('navigation')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Logout' })).toBeNull();
+  if (stored) {
+    expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy();
+    expect(screen.getByText(account().displayName)).toBeTruthy();
+    expect(screen.getByText('LSR')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Staff login' })).toBeNull();
+  } else expect(screen.getByRole('link', { name: 'Staff login' }).getAttribute('href')).toBe('/login');
   expect(screen.queryByLabelText('Traffic simulator')).toBeNull();
   expect(fetchMock.mock.calls.every(([path, options]) => path === '/api/business-status' && !options.headers.Authorization)).toBe(true);
 });
