@@ -172,6 +172,20 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .staff-identity { display: flex; align-items: center; gap: 22px; }
 .staff-login { color: #526a5d; font-size: 13px; padding: 10px 0; text-underline-offset: 3px; }
 .staff-login:hover { color: #173c39; }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 30px; }
+.admin-console .section-heading { align-items: center; margin-bottom: 20px; }
+.admin-form { padding: 24px; background: #fff; border: 1px solid #d4dfd8; border-radius: 12px; margin: 24px 0; }
+.admin-form h3 { margin: 0 0 20px; font-size: 17px; }
+.admin-form fieldset { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 18px; }
+.admin-form label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; }
+.admin-form input:not([type='checkbox']) { border: 1px solid #bacdc0; padding: 12px; border-radius: 8px; max-width: 100%; }
+.admin-form input:focus-visible { outline: 3px solid #b47918; outline-offset: 2px; }
+.admin-checkbox, .admin-form .admin-checkbox { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 16px 0; font-size: 14px; }
+.admin-checkbox input { width: 18px; height: 18px; accent-color: #1d6551; }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-actions button { padding: 10px 14px; font-size: 13px; }
+.rotation-grid select { max-width: none; min-width: 155px; }
+.admin-save { margin-top: 22px; }
 .staff-identity strong { display: block; font-size: 14px; }
 .staff-identity small { display: block; color: #60716b; margin-top: 5px; }
 .staff-nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px max(24px, calc((100vw - 1120px) / 2)); background: #fff; border-bottom: 1px solid #dce4df; }

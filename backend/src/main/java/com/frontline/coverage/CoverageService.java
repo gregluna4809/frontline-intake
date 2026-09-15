@@ -42,12 +42,12 @@ public class CoverageService {
         if (requireDate(date).isBefore(calendar.calendarDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Call-out date cannot be in the past.");
         }
+        days.freezeCompletedDays();
         Staff target = staff.findById(staffId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff not found."));
-        if (target.role() != Staff.Role.LSR) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Call-outs require an LSR.");
+        if (!target.active() || target.role() != Staff.Role.LSR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Call-outs require an active LSR.");
         }
-        days.freezeCompletedDays();
         return repository.upsert(staffId, date, reason == null || reason.isBlank() ? null : reason.strip());
     }
 

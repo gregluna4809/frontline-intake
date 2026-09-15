@@ -21,7 +21,7 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–16b are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; staff log in through /login and receive role-based navigation.
+Steps 1–17 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; staff log in through /login and receive role-based navigation.
 
 ## Run on Windows PowerShell
 
@@ -149,7 +149,7 @@ Resource-room visits are not assigned to staff, so that screen remains unchanged
 
 ## Step 8: business calendar and day scoping
 
-The business calendar uses America/New_York, Monday through Friday, 8:30am inclusive to 4:45pm exclusive. Its static holiday list covers 2026 and 2027 and must be extended before 2028. The requested holidays follow the [2026](https://www.cs.ny.gov/attendance_leave/2026_legal_holidays.cfm) and [2027](https://www.cs.ny.gov/attendance_leave/2027_legal_holidays.cfm) observed dates: Saturday holidays stay Saturday, Sunday holidays are observed Monday. The requested day after Thanksgiving is also closed.
+The business calendar uses America/New_York, Monday through Friday, 8:30am inclusive to 4:45pm exclusive. Step 17 stores holidays in PostgreSQL. Migration V12 preserves the former 2026–2027 list; administrators can maintain future dates through the Holidays tab, including dates beyond 2027. The requested holidays follow the [2026](https://www.cs.ny.gov/attendance_leave/2026_legal_holidays.cfm) and [2027](https://www.cs.ny.gov/attendance_leave/2027_legal_holidays.cfm) observed dates: Saturday holidays stay Saturday, Sunday holidays are observed Monday. The requested day after Thanksgiving is also closed.
 
 `GET /api/business-status` returns `{ isOpen, currentBusinessDate, lastCompletedBusinessDate }`. While open, currentBusinessDate is today. Before opening, on weekends, and on holidays it is the most recently completed business day; after closing on a business day it is that same day. During open hours the simulator control displays the effective business date; after hours the persistent closed banner identifies the frozen date.
 
@@ -269,15 +269,15 @@ The authorization suite logs in through the real API and tests all 45 restricted
 | LSR | staff1–staff4 | My Queue | My Queue, Resource room |
 | SUPERVISING_LSR | staff5 | Supervisor board | Supervisor |
 | CENTER_MANAGER | staff9 | Supervisor board | Supervisor, Front desk, My Queue, Resource room |
-| ADMINISTRATOR | staff10 | Admin placeholder | None yet |
+| ADMINISTRATOR | staff10 | Administrator console | Staff, Rotation, Holidays tabs |
 
-The View as dropdown is removed. Staff pages show the logged-in display name and role, permitted navigation links, and Logout. Logout clears stored authentication and replaces the current route with `/login`; browser Back cannot restore protected content. Direct navigation to a disallowed or unknown staff URL redirects to the role's landing before mounting that screen. `/appointments` also resolves to the caller's landing. Without a valid stored session, staff routes redirect to login. Administrator sees “Admin console — coming soon.” without operational data requests.
+The View as dropdown is removed. Staff pages show the logged-in display name and role, permitted navigation links, and Logout. Logout clears stored authentication and replaces the current route with `/login`; browser Back cannot restore protected content. Direct navigation to a disallowed or unknown staff URL redirects to the role's landing before mounting that screen. `/appointments` also resolves to the caller's landing. Without a valid stored session, staff routes redirect to login. Administrator sees the Staff, Rotation, and Holidays console without operational data requests.
 
 The API client reads the current stored token for each authenticated request and adds `Authorization: Bearer <token>` while preserving other headers, including If-Match. A 401 clears authentication and redirects to `/login?expired=1`, displaying “Session expired, please log in again.” This applies to reads, mutations, and background requests. A login 401 instead displays the invalid-credentials error on the login page. Delayed 401 responses from a previous session cannot clear a newer login or overwrite an explicit logout. A 403 displays the server's permission error and keeps the session.
 
 LSRs automatically load their own My Queue using the logged-in staff ID. They have no staff picker, cannot override identity using `?staff=...`, and do not see Reschedule. Center Managers have a Staff member picker for LSR queues, retain selection in the URL, and can close or reschedule those appointments. After hours, the same identity and navigation rules apply to snapshots, and managers can select staff from the frozen snapshot.
 
-`/` and `/kiosk` remain fully public, with no staff navigation or simulator controls. The header always offers Staff login when signed out, or the current name, role, and Logout when signed in, including during closed hours. Public check-in, business-status, snapshot, and login calls omit the stored token. Login and the admin placeholder do not depend on business hours. Operational staff screens retain the existing closed-hours behavior and simulator controls. The backend remains the authorization boundary; changing browser state does not change server permissions.
+`/` and `/kiosk` remain fully public, with no staff navigation or simulator controls. The header always offers Staff login when signed out, or the current name, role, and Logout when signed in, including during closed hours. Public check-in, business-status, snapshot, and login calls omit the stored token. Login and the admin console do not depend on business hours. Operational staff screens retain the existing closed-hours behavior and simulator controls. The backend remains the authorization boundary; changing browser state does not change server permissions.
 
 Tests cover login landings and links for all five roles, invalid credentials and incomplete responses, logout and route guards, forged staff selection, manager selection and reload, background and mutation 401s, delayed-response races, 403 handling, public kiosk isolation, and retained queue/snapshot behavior. Backend tests verify that every account's login identity fields match the signed JWT claims.
 
@@ -287,7 +287,40 @@ Every screen uses the same header. When signed out, a small **Staff login** link
 
 **Closed-hours rule for Step 17 and later:** staff management is not a daily-operations screen and must work identically whether the center is open or closed. `/login` and the admin console must stay outside `BusinessScreen` and its business-hours/snapshot checks. They must not depend on business-status or snapshot requests. Only **Kiosk, Front desk, Supervisor, My Queue, and Resource room** freeze during closed hours. Authentication and role authorization still apply to admin functions.
 
-Tests verify login-link access from open and closed kiosks, identity display on all five closed operational screens, closed-hours logout, and successful login into the admin placeholder without consulting business hours.
+Tests verify login-link access from open and closed kiosks, identity display on all five closed operational screens, closed-hours logout, and successful login into the admin console without consulting business hours.
+
+## Step 17: administrator console
+
+Log in as **staff10 / demo1234** and open `/admin`. The console has **Staff**, **Rotation**, and **Holidays** sections and remains fully functional after hours. It does not request business status or snapshots to render. Management writes preserve completed-day snapshots transactionally on the server; this does not restrict when an administrator can make changes.
+
+Flyway **V12** adds `staff.active BOOLEAN NOT NULL DEFAULT TRUE` and `holiday(id, date UNIQUE, label)`. Existing staff remain active. The migration seeds all **25** former 2026–2027 holiday dates exactly, including the Saturday dates, July 4 and observed July 5 in 2027, and the day after Thanksgiving. The calendar reads the table for each determination; there is no static fallback or holiday cache. Weekend and opening-hour rules remain unchanged. Add actual closure dates explicitly: the console does not automatically create observed-day entries.
+
+All `/api/admin/**` endpoints require **ADMINISTRATOR**. Other authenticated roles receive 403 with the existing clear role-denial message; unauthenticated calls receive 401. Password hashes never appear in management responses.
+
+| Method | Path | Request / result |
+| --- | --- | --- |
+| GET | `/api/admin/staff` | All staff, active and inactive: `{ id, displayName, role, active, accountId, username }`; account fields are null when absent |
+| POST | `/api/admin/staff` | `{ "displayName": "Demo New LSR", "role": "LSR" }`; returns 201 with the new staff row; active defaults to true |
+| PUT | `/api/admin/staff/{id}` | `{ "displayName": "Demo New LSR", "role": "LSR", "active": false }`; returns the updated staff row; omitted active preserves its current value |
+| GET | `/api/admin/rotation` | Active LSR base assignments: `{ staffId, displayName, dayOfWeek, dutyType }` |
+| PUT | `/api/admin/rotation` | `{ "assignments": [{ "staffId": 1, "dayOfWeek": 1, "dutyType": "RESOURCE_ROOM" }] }`; atomically updates supplied cells and returns the active grid |
+| GET | `/api/admin/holidays` | All `{ id, date, label }` rows ordered by date; the UI initially shows upcoming dates and offers Include past holidays |
+| POST | `/api/admin/holidays` | `{ "date": "2028-01-03", "label": "Demo closure" }`; returns 201 with the holiday |
+| DELETE | `/api/admin/holidays/{id}` | Removes that holiday; returns 204 with no response body |
+| POST | `/api/admin/accounts` | `{ "staffId": 11, "username": "new.staff", "password": "initial123" }`; creates an account for an active staff member and returns 201 with account metadata |
+| PUT | `/api/admin/accounts/{id}/reset-password` | `{ "password": "replacement123" }`; BCrypt-hashes the replacement and returns account metadata |
+
+Display names and holiday labels must be nonblank and at most 100 characters. Roles use the existing five codes. Usernames are case-sensitive, start with an ASCII letter/digit, and contain only letters, digits, dots, underscores, or hyphens (maximum 100 characters). New passwords require 8–72 characters and no more than 72 UTF-8 bytes. Duplicate usernames, a second account for the same staff member, or a duplicate holiday date return 409. Invalid input returns 400; missing target records return 404. Staff deletion is not supported.
+
+**Deactivation preserves history.** Inactive staff are omitted from live `/api/staff`, operational rotation, and the editable admin rotation grid. They cannot receive new visit assignments or call-outs. Existing visits, events, account rows, and saved snapshots retain their references; waiting appointments assigned to inactive staff remain visible under Other assignments on the Supervisor board for reassignment. Admin Staff still lists inactive members and offers Reactivate. Deactivation and assignment use the same transaction lock. The final active administrator with a login account cannot be disabled or demoted.
+
+Inactive staff cannot log in. JWT validation also checks current staff activity and role, so deactivation or role changes invalidate old-role access on the next authenticated request. Reactivation restores login eligibility. Password resets take effect for the next login immediately; old passwords fail, but already-issued JWTs keep their normal lifetime unless activity or role changes. Name changes appear in login identity on the next login.
+
+Creating a staff member does not automatically create a login. Use Create account in that row, or Reset password for an existing account. New LSRs—and staff changed to the LSR role—receive any missing Monday–Sunday rotation rows, defaulting to APPOINTMENTS. The grid uses ISO weekdays 1–7 and APPOINTMENTS / RESOURCE_ROOM duties. Inactive/non-LSR targets and duplicate staff/day entries are rejected; an invalid batch rolls back every supplied cell. Existing call-outs still override the base duty for their date. Old rotation rows are retained for possible reactivation.
+
+Holiday additions/removals affect subsequent calendar checks immediately without restarting. Existing visit business dates and frozen snapshots are not rewritten. Saved snapshots remain readable even if their date is later marked as a holiday. New holiday dates and labels beyond the migrated years are maintained by the administrator.
+
+Tests cover all 50 admin endpoint/role combinations, the exact migrated dates, holiday-driven open/closed changes, account creation and password reset login, deactivation/reactivation and preserved history, assignment exclusion, role-token invalidation, rotation initialization and transactional rollback, validation/conflicts, retained snapshots, and management outside business hours. Frontend tests exercise all three sections, account actions, form errors/retry, 204 deletion handling, and Supervisor visibility of inactive staff assignments.
 
 ## Simplest choices where the spec is silent
 

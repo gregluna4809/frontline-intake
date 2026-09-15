@@ -21,7 +21,7 @@ class BusinessSchedulesTest {
         Clock clock = mock(Clock.class);
         var simulator = spy(new TrafficSimulator(mock(VisitService.class), new SimulatorProperties(false, 1,
                 Map.of("PHONE_ACCESS", 1), Map.of("MANDATORY", 1))));
-        var schedules = new BusinessSchedules(new BusinessCalendar(clock), simulator, mock(TicketSequenceService.class), mock(BusinessDayService.class));
+        var schedules = new BusinessSchedules(TestHolidays.calendar(clock), simulator, mock(TicketSequenceService.class), mock(BusinessDayService.class));
         when(clock.instant()).thenReturn(Instant.parse("2026-09-08T12:29:00Z"));
         schedules.reconcileSimulator();
         assertThat(simulator.status().running()).isFalse();
@@ -41,7 +41,7 @@ class BusinessSchedulesTest {
     void openingResetSkipsWeekendsAndHolidays() {
         Clock clock = mock(Clock.class);
         TicketSequenceService tickets = mock(TicketSequenceService.class);
-        var schedules = new BusinessSchedules(new BusinessCalendar(clock), mock(TrafficSimulator.class), tickets, mock(BusinessDayService.class));
+        var schedules = new BusinessSchedules(TestHolidays.calendar(clock), mock(TrafficSimulator.class), tickets, mock(BusinessDayService.class));
         for (String instant : new String[] {"2026-09-07T12:30:00Z", "2026-09-12T12:30:00Z",
                 "2026-09-13T12:30:00Z", "2026-11-27T13:30:00Z"}) {
             when(clock.instant()).thenReturn(Instant.parse(instant));

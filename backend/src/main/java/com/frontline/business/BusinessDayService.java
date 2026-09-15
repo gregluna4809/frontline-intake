@@ -74,7 +74,9 @@ public class BusinessDayService {
     public JsonNode snapshot(LocalDate requested) {
         freezeCompletedDays();
         LocalDate date = requested == null ? calendar.lastCompletedBusinessDate() : requested;
-        if (!calendar.isBusinessDay(date) || date.isAfter(calendar.lastCompletedBusinessDate())) {
+        boolean saved = jdbc.sql("SELECT EXISTS (SELECT 1 FROM business_day_snapshot WHERE business_date = :date)")
+                .param("date", date).query(Boolean.class).single();
+        if (!saved && (!calendar.isBusinessDay(date) || date.isAfter(calendar.lastCompletedBusinessDate()))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a completed business date.");
         }
         capture(date);

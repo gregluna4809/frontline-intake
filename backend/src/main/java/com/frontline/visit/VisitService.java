@@ -170,8 +170,8 @@ public class VisitService {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
         Staff target = staff.findById(staffId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff not found."));
-        if (target.role() != Staff.Role.LSR) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Visits can only be assigned to an LSR.");
+        if (!target.active() || target.role() != Staff.Role.LSR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Visits can only be assigned to an active LSR.");
         }
         Visit updated = repository.assignStaff(previous, staffId).orElseThrow(this::staleVersion);
         repository.recordTransition(previous, updated);

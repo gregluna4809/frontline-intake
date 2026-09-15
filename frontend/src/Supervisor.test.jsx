@@ -24,6 +24,20 @@ test('supervisor groups unassigned and assigned appointments and excludes superv
   expect(screen.getByRole('button', { name: 'Assign A0001' }).disabled).toBe(true);
 });
 
+test('deactivated staff disappear from assignment choices while their appointments remain visible', async () => {
+  const { fetchMock, state } = mockQueues();
+  state.coverage = state.coverage.filter(person => person.staffId !== 1);
+  const original = fetchMock.getMockImplementation();
+  fetchMock.mockImplementation((path, options) => path === '/api/staff'
+    ? Promise.resolve(ok(staff.filter(person => person.id !== 1))) : original(path, options));
+  render(<Supervisor />);
+  const other = await screen.findByRole('region', { name: 'Other assignments' });
+  expect(within(other).getByText('A0002')).toBeTruthy();
+  expect(screen.queryByRole('option', { name: 'Demo Staff 001' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Demo Staff 001' })).toBeNull();
+  expect(within(other).getByRole('button', { name: 'Reassign A0002' })).toBeTruthy();
+});
+
 test('assignment and reassignment move the visit between groups with current versions', async () => {
   const { fetchMock } = mockQueues();
   render(<Supervisor />);

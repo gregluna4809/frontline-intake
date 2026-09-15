@@ -26,7 +26,7 @@ export async function request(path, options = {}) {
     const problem = await response.json().catch(() => null);
     throw new Error(problem?.detail || 'Unable to complete the request. Please try again.');
   }
-  return response.json();
+  return response.status === 204 ? null : response.json();
 }
 
 export const reasons = [

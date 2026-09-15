@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.*;
 class BusinessCalendarTest {
     private BusinessCalendar at(String easternTime) {
         Instant instant = ZonedDateTime.parse(easternTime + "[America/New_York]").toInstant();
-        return new BusinessCalendar(Clock.fixed(instant, ZoneOffset.UTC));
+        return TestHolidays.calendar(Clock.fixed(instant, ZoneOffset.UTC));
     }
 
     @ParameterizedTest
@@ -48,7 +48,7 @@ class BusinessCalendarTest {
     })
     void listedHolidaysAreClosed(String date) {
         var noon = LocalDate.parse(date).atTime(12, 0).atZone(BusinessCalendar.ZONE);
-        BusinessCalendar calendar = new BusinessCalendar(Clock.fixed(noon.toInstant(), ZoneOffset.UTC));
+        BusinessCalendar calendar = TestHolidays.calendar(Clock.fixed(noon.toInstant(), ZoneOffset.UTC));
         assertThat(calendar.isBusinessDay(noon.toLocalDate())).isFalse();
         assertThat(calendar.isOpenNow()).isFalse();
         assertThat(calendar.currentBusinessDate()).isBefore(noon.toLocalDate());
@@ -58,7 +58,7 @@ class BusinessCalendarTest {
     @ValueSource(strings = {"2026-07-03", "2027-06-18", "2027-12-24"})
     void saturdayHolidaysDoNotCloseFriday(String date) {
         Instant noon = LocalDate.parse(date).atTime(12, 0).atZone(BusinessCalendar.ZONE).toInstant();
-        assertThat(new BusinessCalendar(Clock.fixed(noon, ZoneOffset.UTC)).isOpenNow()).isTrue();
+        assertThat(TestHolidays.calendar(Clock.fixed(noon, ZoneOffset.UTC)).isOpenNow()).isTrue();
     }
 
     @Test
@@ -66,8 +66,8 @@ class BusinessCalendarTest {
         for (String instant : new String[] {"2026-03-06T13:30:00Z", "2026-03-09T12:30:00Z",
                 "2026-10-30T12:30:00Z", "2026-11-02T13:30:00Z"}) {
             var clock = Clock.fixed(Instant.parse(instant), ZoneOffset.UTC);
-            assertThat(new BusinessCalendar(clock).isOpenNow()).isTrue();
-            assertThat(new BusinessCalendar(Clock.offset(clock, java.time.Duration.ofMinutes(-1))).isOpenNow()).isFalse();
+            assertThat(TestHolidays.calendar(clock).isOpenNow()).isTrue();
+            assertThat(TestHolidays.calendar(Clock.offset(clock, java.time.Duration.ofMinutes(-1))).isOpenNow()).isFalse();
         }
     }
 }

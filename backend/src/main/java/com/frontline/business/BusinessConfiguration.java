@@ -10,5 +10,7 @@ public class BusinessConfiguration {
     public Clock businessClock() { return Clock.system(BusinessCalendar.ZONE); }
 
     @Bean
-    public BusinessCalendar businessCalendar(Clock businessClock) { return new BusinessCalendar(businessClock); }
+    public BusinessCalendar businessCalendar(Clock businessClock, HolidayRepository holidays) {
+        return new BusinessCalendar(businessClock, holidays::dates);
+    }
 }

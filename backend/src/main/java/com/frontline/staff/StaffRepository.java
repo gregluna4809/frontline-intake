@@ -21,6 +21,11 @@ public class StaffRepository {
                 .query(this::mapStaff).list();
     }
 
+    public List<Staff> findActive() {
+        return jdbc.sql("SELECT * FROM staff WHERE active ORDER BY role, display_name, id")
+                .query(this::mapStaff).list();
+    }
+
     public Optional<Staff> findById(long id) {
         return jdbc.sql("SELECT * FROM staff WHERE id = :id")
                 .param("id", id).query(this::mapStaff).optional();
@@ -28,6 +33,6 @@ public class StaffRepository {
 
     private Staff mapStaff(ResultSet rs, int row) throws SQLException {
         return new Staff(rs.getLong("id"), rs.getString("display_name"),
-                Staff.Role.valueOf(rs.getString("role")));
+                Staff.Role.valueOf(rs.getString("role")), rs.getBoolean("active"));
     }
 }

@@ -134,6 +134,7 @@ test.each([true, false])('login and admin remain functional without consulting b
   window.history.replaceState({}, '', '/login');
   const fetchMock = vi.fn(async path => {
     if (path === '/api/business-status') return ok({ ...closed, isOpen });
+    if (path === '/api/admin/staff') return ok([]);
     if (path === '/api/auth/login') return ok({ token: 'admin-token', staffId: 10, role: 'ADMINISTRATOR', displayName: 'Demo Administrator' });
     throw new Error('Unexpected request: ' + path);
   });
@@ -143,10 +144,10 @@ test.each([true, false])('login and admin remain functional without consulting b
   await user.type(screen.getByLabelText('Username'), 'staff10');
   await user.type(screen.getByLabelText('Password'), 'demo1234');
   await user.click(screen.getByRole('button', { name: 'Log in' }));
-  expect(await screen.findByRole('heading', { name: 'Admin console — coming soon.' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Administrator console' })).toBeTruthy();
   expect(window.location.pathname).toBe('/admin');
   expect(screen.getByText('Demo Administrator')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy();
   expect(screen.queryByText(/Career center is closed/)).toBeNull();
-  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/auth/login']);
+  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/auth/login', '/api/admin/staff']);
 });

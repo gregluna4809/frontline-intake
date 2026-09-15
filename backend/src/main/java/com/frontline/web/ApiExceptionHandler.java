@@ -15,6 +15,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ProblemDetail methodNotAllowed(org.springframework.web.HttpRequestMethodNotSupportedException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.METHOD_NOT_ALLOWED, "This endpoint does not support that method.");
+    }
+
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,

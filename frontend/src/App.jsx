@@ -5,6 +5,7 @@ import MyQueue from './MyQueue.jsx';
 import StaffNavigation from './StaffNavigation.jsx';
 import StaffQueueSelector from './StaffQueueSelector.jsx';
 import Login from './Login.jsx';
+import AdminConsole from './AdminConsole.jsx';
 import { landingPage, navigate, rolePaths, useAuth } from './auth.js';
 import ResourceRoom from './ResourceRoom.jsx';
 import FrontDesk from './FrontDesk.jsx';
@@ -157,7 +158,7 @@ export default function App() {
     <StaffNavigation auth={auth} path={url.pathname} kiosk={kiosk} />
     {redirect ? <main><p>Opening your workspace...</p></main> :
       login ? <main><Login expired={url.searchParams.get('expired') === '1'} /></main> :
-      screen === 'admin' ? <main><section><h1>Admin console — coming soon.</h1></section></main> :
+      screen === 'admin' ? <AdminConsole /> :
       (kiosk || allowed) && <BusinessScreen key={kiosk ? 'kiosk' : auth.token} screen={screen}
         auth={kiosk ? null : auth} staffId={staffId} />}
     <footer>Career Center · Synthetic intake demo</footer>

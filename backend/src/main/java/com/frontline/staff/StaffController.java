@@ -17,6 +17,6 @@ public class StaffController {
 
     @GetMapping
     public List<Staff> list() {
-        return repository.findAll();
+        return repository.findActive();
     }
 }

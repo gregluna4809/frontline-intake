@@ -22,6 +22,7 @@ function mockApi(auth = account()) {
   const { fetchMock, state } = mockQueues();
   const original = fetchMock.getMockImplementation();
   fetchMock.mockImplementation((path, options = {}) => {
+    if (path === '/api/admin/staff') return Promise.resolve(ok([]));
     if (path === '/api/auth/login') return Promise.resolve(ok(auth));
     if (path === '/api/simulator/status') return Promise.resolve(ok({ running: false, arrivalsPerMinute: 4 }));
     if (path === '/api/resources' || path.includes('WAITING_RESOURCE') || path.includes('AT_RESOURCE') ||
@@ -46,7 +47,7 @@ test.each(cases)('%s logs in, stores direct response fields, and sees only permi
   await waitFor(() => expect(window.location.pathname).toBe(landing));
   expect(getAuth()).toEqual(auth);
   expect(screen.getByText(auth.displayName)).toBeTruthy();
-  expect(screen.getByText(roleLabels[role])).toBeTruthy();
+  expect(within(screen.getByRole('banner')).getByText(roleLabels[role])).toBeTruthy();
   const nav = screen.queryByRole('navigation', { name: 'Staff navigation' });
   expect(nav ? within(nav).getAllByRole('link').map(link => link.textContent) : []).toEqual(links);
   expect(screen.queryByText('View as')).toBeNull();
@@ -56,8 +57,8 @@ test.each(cases)('%s logs in, stores direct response fields, and sees only permi
     method: 'POST', body: JSON.stringify({ username: 'staff1', password: 'demo1234' }),
   }));
   if (role === 'ADMINISTRATOR') {
-    expect(screen.getByRole('heading', { name: 'Admin console — coming soon.' })).toBeTruthy();
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/auth/login']);
+    expect(screen.getByRole('heading', { name: 'Administrator console' })).toBeTruthy();
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/auth/login', '/api/admin/staff']);
   }
 });
 

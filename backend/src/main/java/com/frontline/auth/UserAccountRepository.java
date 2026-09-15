@@ -15,13 +15,13 @@ public class UserAccountRepository {
 
     public Optional<Account> findByUsername(String username) {
         return jdbc.sql("""
-                SELECT u.username, u.password_hash, s.id, s.display_name, s.role
+                SELECT u.username, u.password_hash, s.id, s.display_name, s.role, s.active
                 FROM user_account u JOIN staff s ON s.id = u.staff_id
-                WHERE u.username = :username
+                WHERE u.username = :username AND s.active
                 """).param("username", username).query((rs, row) -> new Account(
                         rs.getString("username"), rs.getString("password_hash"),
                         new Staff(rs.getLong("id"), rs.getString("display_name"),
-                                Staff.Role.valueOf(rs.getString("role"))))).optional();
+                                Staff.Role.valueOf(rs.getString("role")), rs.getBoolean("active")))).optional();
     }
 
     public record Account(String username, String passwordHash, Staff staff) { }

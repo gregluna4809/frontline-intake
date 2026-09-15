@@ -2,6 +2,7 @@ package com.frontline.auth;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.frontline.staff.StaffRepository;
 import java.util.Base64;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -22,6 +23,11 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
@@ -52,9 +58,18 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSigningKey) {
+    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, StaffRepository staff) {
         var decoder = NimbusJwtDecoder.withSecretKey(jwtSigningKey).macAlgorithm(MacAlgorithm.HS256).build();
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));
+        OAuth2TokenValidator<Jwt> currentStaff = jwt -> {
+            Object id = jwt.getClaim("staffId");
+            boolean valid = id instanceof Number number && staff.findById(number.longValue())
+                    .filter(person -> person.active() && person.role().name().equals(jwt.getClaimAsString("role")))
+                    .isPresent();
+            return valid ? OAuth2TokenValidatorResult.success() : OAuth2TokenValidatorResult.failure(
+                    new OAuth2Error("invalid_token", "Staff access has changed. Log in again.", null));
+        };
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(ISSUER), currentStaff));
         return decoder;
     }
 
@@ -89,6 +104,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/visits", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/business-status", "/api/snapshot").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMINISTRATOR")
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/identify", "/api/visits/{id}/route")
                             .hasAnyRole("CLERK", "CENTER_MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/assign", "/api/visits/{id}/close",

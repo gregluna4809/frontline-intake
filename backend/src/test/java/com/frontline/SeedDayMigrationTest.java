@@ -45,7 +45,7 @@ class SeedDayMigrationTest {
 
     @Test
     void seededDayHasTerminalVisitsMatchingSnapshotAndRealisticMix() throws Exception {
-        assertThat(new BusinessCalendar(clock).isBusinessDay(DATE)).isTrue();
+        assertThat(TestHolidays.calendar(clock).isBusinessDay(DATE)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM visit WHERE business_date = ?", Integer.class, DATE)).isEqualTo(60);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM visit WHERE business_date = ? AND (status NOT IN ('CLOSED', 'LEFT') OR closed_at IS NULL)", Integer.class, DATE)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM visit WHERE reason = 'PHONE_ACCESS'", Integer.class)).isEqualTo(42);
