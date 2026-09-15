@@ -2,6 +2,7 @@ package com.frontline;
 
 import com.frontline.model.Visit;
 import com.frontline.model.Resource;
+import com.frontline.business.BusinessCalendar;
 import com.frontline.visit.VisitRepository;
 import com.frontline.visit.VisitService;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ class VisitApiTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired VisitService service;
+    @Autowired BusinessCalendar calendar;
     @MockitoSpyBean VisitRepository repository;
 
     @BeforeEach
@@ -227,6 +229,7 @@ class VisitApiTest {
 
     @Test
     void occupiedLowerLabelsAreSkippedAndExhaustionQueuesVisit() throws Exception {
+        markBusinessDayOpened();
         jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE label = 'Phone 01'");
         Visit first = identified(Visit.Reason.PHONE_ACCESS);
         assertThat(service.route(first.id(), 1).resource().label()).isEqualTo("Phone 02");
@@ -335,6 +338,7 @@ class VisitApiTest {
 
     @Test
     void concurrentVisitsCannotShareTheLastFreeResource() throws Exception {
+        markBusinessDayOpened();
         jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE' AND label <> 'Phone 01'");
         Visit first = identified(Visit.Reason.PHONE_ACCESS);
         Visit second = identified(Visit.Reason.PHONE_ACCESS);
@@ -464,6 +468,7 @@ class VisitApiTest {
 
     @Test
     void assignWithNoFreeResourceReturnsConflictWithoutEventOrVersionChange() throws Exception {
+        markBusinessDayOpened();
         jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'STATION'");
         Visit waiting = atResource(Visit.Reason.DOCUMENT_SERVICES);
         mvc.perform(post("/api/visits/{id}/assign", waiting.id()).header("If-Match", "\"2\""))
@@ -508,6 +513,7 @@ class VisitApiTest {
 
     @Test
     void failedAssignEventRollsBackResourceReservation() {
+        markBusinessDayOpened();
         jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE'");
         Visit visit = atResource(Visit.Reason.PHONE_ACCESS);
         jdbc.update("UPDATE resource SET status = 'FREE' WHERE label = 'Phone 01'");
@@ -536,6 +542,7 @@ class VisitApiTest {
 
     @Test
     void competingWaitingVisitsCannotShareLastFreeResource() throws Exception {
+        markBusinessDayOpened();
         jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE'");
         Visit first = atResource(Visit.Reason.PHONE_ACCESS);
         Visit second = atResource(Visit.Reason.PHONE_ACCESS);
@@ -569,6 +576,12 @@ class VisitApiTest {
         } catch (ResponseStatusException exception) {
             return exception.getStatusCode().value();
         }
+    }
+
+    private void markBusinessDayOpened() {
+        // Preserve manually occupied fixtures when check-in performs opening catch-up.
+        jdbc.update("INSERT INTO business_day_rollover (business_date) VALUES (?) ON CONFLICT DO NOTHING",
+                calendar.currentBusinessDate());
     }
 
     private Visit atResource(Visit.Reason reason) {
