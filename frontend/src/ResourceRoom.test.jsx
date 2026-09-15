@@ -1,3 +1,4 @@
+import { saveAuth } from './auth.js';
 vi.mock('./SimulatorControl.jsx', () => ({ default: () => null }));
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -11,7 +12,8 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/resource-room');
   vi.spyOn(Date, 'now').mockReturnValue(now);
 });
-afterEach(() => {
+beforeEach(() => { saveAuth({ token: 'test-manager-token', staffId: 9, role: 'CENTER_MANAGER', displayName: 'Demo Manager' }); });
+afterEach(() => { sessionStorage.clear();
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -79,7 +81,7 @@ test('resource room groups inventory, shows customers, and flags only visits ove
   mockRoom();
   render(<App />);
   await screen.findByRole('article', { name: 'Phone 01' });
-  expect(screen.getByRole('combobox', { name: 'Role' }).value).toBe('resource-room');
+  expect(screen.getByRole('link', { name: 'Resource room' }).getAttribute('aria-current')).toBe('page');
   for (const label of ['Phones', 'Computers', 'Stations']) {
     expect(screen.getByRole('region', { name: label })).toBeTruthy();
   }

@@ -35,8 +35,8 @@ test('an LSR with no assigned visits sees an empty queue', async () => {
 
 test.each(['', '999', '5'])('missing or non-LSR selection %s does not expose other queues', async staffId => {
   mockQueues();
-  render(<MyQueue staffId={staffId} />);
-  expect(await screen.findByText('Choose an LSR from View as to see their queue.')).toBeTruthy();
+  render(<MyQueue staffId={staffId} manager onStaffChange={() => {}} />);
+  expect(await screen.findByText('Choose an LSR to see their queue.')).toBeTruthy();
   expect(screen.queryByText('A0002')).toBeNull();
 });
 
@@ -86,7 +86,7 @@ test('my queue can reschedule an assigned appointment and reloads after a stale 
     }
     return original(path, options);
   });
-  render(<MyQueue staffId="1" />);
+  render(<MyQueue staffId="1" manager onStaffChange={() => {}} />);
   const user = userEvent.setup();
   await user.click(await screen.findByRole('button', { name: 'Reschedule A0002' }));
   expect(await screen.findByRole('alert')).toBeTruthy();

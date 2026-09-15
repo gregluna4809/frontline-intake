@@ -51,7 +51,12 @@ class AuthApiTest {
                 .andExpect(jsonPath("$.expiresIn").value(28800)).andReturn();
         assertThat(result.getRequest().getSession(false)).isNull();
         assertThat(result.getResponse().getHeader("Set-Cookie")).isNull();
-        return mapper.readTree(result.getResponse().getContentAsString()).path("token").asText();
+        var body = mapper.readTree(result.getResponse().getContentAsString());
+        var jwt = decoder.decode(body.path("token").asText());
+        assertThat(body.path("staffId").asLong()).isEqualTo(((Number) jwt.getClaim("staffId")).longValue());
+        assertThat(body.path("role").asText()).isEqualTo(jwt.getClaimAsString("role"));
+        assertThat(body.path("displayName").asText()).isEqualTo(jwt.getClaimAsString("displayName"));
+        return body.path("token").asText();
     }
 
     @Test

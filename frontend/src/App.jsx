@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { reasons, reasonLabel, appointmentCategories, appointmentCategoryLabel, request } from './api.js';
 import Supervisor from './Supervisor.jsx';
 import MyQueue from './MyQueue.jsx';
-import RoleSelector from './RoleSelector.jsx';
+import StaffNavigation, { Brand } from './StaffNavigation.jsx';
+import StaffQueueSelector from './StaffQueueSelector.jsx';
+import Login from './Login.jsx';
+import { landingPage, navigate, rolePaths, useAuth } from './auth.js';
 import ResourceRoom from './ResourceRoom.jsx';
 import FrontDesk from './FrontDesk.jsx';
 import SimulatorControl from './SimulatorControl.jsx';
@@ -98,8 +101,35 @@ function Kiosk() {
   );
 }
 
-export default function App() {
+function BusinessScreen({ screen, auth, staffId }) {
   const business = useBusinessView();
+  const manager = auth?.role === 'CENTER_MANAGER';
+  const chooseStaff = id => navigate('/my-queue' + (id ? '?staff=' + id : ''));
+  const screens = {
+    kiosk: <Kiosk />, 'front-desk': <FrontDesk />, supervisor: <Supervisor />,
+    'my-queue': <MyQueue key={staffId} staffId={staffId} manager={manager} onStaffChange={chooseStaff} />,
+    'resource-room': <ResourceRoom />,
+  };
+  return <>
+    {business.status?.isOpen === false && <div className="closed-banner" role="status">
+      Career center is closed — showing {business.status.lastCompletedBusinessDate}'s final activity
+    </div>}
+    <main>
+      {business.status?.isOpen && auth && <div className="workspace-tools"><SimulatorControl /></div>}
+      {business.error ? <p role="alert">{business.error}</p> :
+        !business.status ? <p>Checking business hours...</p> :
+        business.status.isOpen ? <div key={business.status.currentBusinessDate}>{screens[screen]}</div> :
+        business.snapshot ? <>
+          {screen === 'my-queue' && manager && <StaffQueueSelector staff={business.snapshot.staff}
+            staffId={staffId} onChange={chooseStaff} />}
+          <SnapshotView snapshot={business.snapshot} role={screen} staffId={staffId} />
+        </> : <p>Loading final activity...</p>}
+    </main>
+  </>;
+}
+
+export default function App() {
+  const auth = useAuth();
   const [location, setLocation] = useState(() => window.location.pathname + window.location.search);
   useEffect(() => {
     function syncLocation() { setLocation(window.location.pathname + window.location.search); }
@@ -107,46 +137,28 @@ export default function App() {
     return () => window.removeEventListener('popstate', syncLocation);
   }, []);
   const url = new URL(location, window.location.origin);
-  const legacyAppointments = url.pathname === '/appointments';
-  useEffect(() => {
-    if (legacyAppointments) {
-      window.history.replaceState({}, '', '/supervisor');
-      setLocation('/supervisor');
-    }
-  }, [legacyAppointments]);
-  const role = legacyAppointments ? 'supervisor' : url.pathname === '/' ? 'kiosk' : url.pathname.slice(1);
-  const staffId = url.searchParams.get('staff') || '';
-  function navigate(path) {
-    window.history.pushState({}, '', path);
-    setLocation(path);
+  const kiosk = url.pathname === '/' || url.pathname === '/kiosk';
+  const login = url.pathname === '/login';
+  const allowed = auth && rolePaths[auth.role].includes(url.pathname);
+  let redirect = null;
+  if (!kiosk) {
+    if (!auth && !login) redirect = '/login';
+    else if (auth && (login || !allowed)) redirect = landingPage(auth.role);
+    else if (auth?.role === 'LSR' && url.pathname === '/my-queue' && url.searchParams.has('staff')) redirect = '/my-queue';
   }
-  const screens = {
-    kiosk: <Kiosk />, 'front-desk': <FrontDesk />, supervisor: <Supervisor />,
-    'my-queue': <MyQueue key={staffId} staffId={staffId} />, 'resource-room': <ResourceRoom />,
-  };
-  const supported = Object.hasOwn(screens, role);
+  useEffect(() => { if (redirect) navigate(redirect, true); }, [redirect, location]);
+  const screen = kiosk ? 'kiosk' : url.pathname.slice(1);
+  const staffId = auth?.role === 'LSR' ? String(auth.staffId) : url.searchParams.get('staff') || '';
 
-  return (
-    <>
-      <div className="demo-banner">Synthetic demo — no real data</div>
-      <header className="topbar">
-        <a className="brand" href="/kiosk"><span className="brand-mark">F</span><span>Frontline<small>Career Center</small></span></a>
-        {business.status?.isOpen && <SimulatorControl />}
-        {(business.status?.isOpen || business.snapshot) && <RoleSelector role={role} staffId={staffId}
-          snapshotStaff={business.status?.isOpen ? null : business.snapshot?.staff} onNavigate={navigate} />}
-      </header>
-      {business.status?.isOpen === false && <div className="closed-banner" role="status">
-        Career center is closed — showing {business.status.lastCompletedBusinessDate}'s final activity
-      </div>}
-      <main>
-        {!supported ? <section><h1>Page not available</h1><a href="/kiosk">Return to kiosk</a></section> :
-          business.error ? <p role="alert">{business.error}</p> :
-          !business.status ? <p>Checking business hours...</p> :
-          business.status.isOpen ? <div key={business.status.currentBusinessDate}>{screens[role]}</div> :
-          business.snapshot ? <SnapshotView snapshot={business.snapshot} role={role} staffId={staffId} /> :
-          <p>Loading final activity...</p>}
-      </main>
-      <footer>Career Center · Synthetic intake demo</footer>
-    </>
-  );
+  return <>
+    <div className="demo-banner">Synthetic demo — no real data</div>
+    {!kiosk && auth ? <StaffNavigation auth={auth} path={url.pathname} /> :
+      <header className="topbar"><Brand path={kiosk ? '/kiosk' : '/login'} /></header>}
+    {redirect ? <main><p>Opening your workspace...</p></main> :
+      login ? <main><Login expired={url.searchParams.get('expired') === '1'} /></main> :
+      screen === 'admin' ? <main><section><h1>Admin console — coming soon.</h1></section></main> :
+      (kiosk || allowed) && <BusinessScreen key={kiosk ? 'kiosk' : auth.token} screen={screen}
+        auth={kiosk ? null : auth} staffId={staffId} />}
+    <footer>Career Center · Synthetic intake demo</footer>
+  </>;
 }

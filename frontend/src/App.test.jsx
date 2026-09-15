@@ -1,11 +1,13 @@
+import { saveAuth } from './auth.js';
 vi.mock('./SimulatorControl.jsx', () => ({ default: () => null }));
 import React from 'react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
 
-afterEach(() => {
+beforeEach(() => { saveAuth({ token: 'test-manager-token', staffId: 9, role: 'CENTER_MANAGER', displayName: 'Demo Manager' }); });
+afterEach(() => { sessionStorage.clear();
   cleanup();
   vi.unstubAllGlobals();
   window.history.replaceState({}, '', '/kiosk');
@@ -20,7 +22,7 @@ test('kiosk sends walk-in type and selected reason and displays the returned tic
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
-  await screen.findByRole('combobox', { name: 'Role' });
+  await screen.findByRole('button', { name: window.location.pathname === '/front-desk' ? 'Refresh queue' : 'Check in' });
   const user = userEvent.setup();
   expect(screen.getByRole('button', { name: 'Check in' }).disabled).toBe(true);
   await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
@@ -47,7 +49,7 @@ test('failed check-in shows an error and permits retry without losing the reason
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
-  await screen.findByRole('combobox', { name: 'Role' });
+  await screen.findByRole('button', { name: window.location.pathname === '/front-desk' ? 'Refresh queue' : 'Check in' });
   const user = userEvent.setup();
   await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
   await user.click(screen.getByRole('radio', { name: /Job Search/ }));
@@ -71,7 +73,7 @@ test('front desk loads checked-in visits with their original reason', async () =
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : (path === '/api/staff' || path === '/api/visits?status=IDENTIFIED')
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
-  await screen.findByRole('combobox', { name: 'Role' });
+  await screen.findByRole('button', { name: window.location.pathname === '/front-desk' ? 'Refresh queue' : 'Check in' });
   expect(await screen.findByText('B0001')).toBeTruthy();
   expect(screen.getByText('Document Services')).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledWith(
@@ -88,7 +90,7 @@ test('front desk reports a failed queue load and can refresh successfully', asyn
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : (path === '/api/staff' || path === '/api/visits?status=IDENTIFIED')
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
-  await screen.findByRole('combobox', { name: 'Role' });
+  await screen.findByRole('button', { name: window.location.pathname === '/front-desk' ? 'Refresh queue' : 'Check in' });
   expect(await screen.findByRole('alert')).toBeTruthy();
   await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh queue' }));
   expect(await screen.findByText(/No visits waiting at the front desk/)).toBeTruthy();
@@ -108,7 +110,7 @@ test.each([
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
-  await screen.findByRole('combobox', { name: 'Role' });
+  await screen.findByRole('button', { name: window.location.pathname === '/front-desk' ? 'Refresh queue' : 'Check in' });
   const user = userEvent.setup();
   expect(screen.queryByRole('radio', { name: /Phone Access/ })).toBeNull();
   await user.click(screen.getByRole('radio', { name: 'Walk-In' }));
@@ -138,7 +140,7 @@ test('switching from appointment to walk-in discards the category', async () => 
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
-  await screen.findByRole('combobox', { name: 'Role' });
+  await screen.findByRole('button', { name: window.location.pathname === '/front-desk' ? 'Refresh queue' : 'Check in' });
   const user = userEvent.setup();
   await user.click(screen.getByRole('radio', { name: 'Appointment' }));
   await user.click(screen.getByRole('radio', { name: /Mandatory/ }));

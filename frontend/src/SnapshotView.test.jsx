@@ -1,5 +1,6 @@
+import { saveAuth } from './auth.js';
 import React from 'react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import App from './App.jsx';
 import { businessStatus, staff, rotation, ok } from './testQueues.js';
@@ -13,7 +14,8 @@ const snapshot = {
   resources: [{ id: 1, label: 'Phone 01', type: 'PHONE', status: 'OCCUPIED', ticket: 'B0001' }],
 };
 const closed = { isOpen: false, currentBusinessDate: snapshot.businessDate, lastCompletedBusinessDate: snapshot.businessDate };
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/kiosk'); });
+beforeEach(() => { saveAuth({ token: 'test-manager-token', staffId: 9, role: 'CENTER_MANAGER', displayName: 'Demo Manager' }); });
+afterEach(() => { sessionStorage.clear(); cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/kiosk'); });
 
 function mockBusiness(initial = closed) {
   const state = { status: initial };
@@ -36,7 +38,7 @@ test.each(['/kiosk', '/front-desk', '/supervisor', '/my-queue?staff=1', '/resour
     render(<App />);
     await screen.findByRole('table');
     expect(screen.getByRole('status').textContent).toContain("2026-09-08's final activity");
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryAllByRole('button').filter(button => button.textContent !== 'Logout')).toHaveLength(0);
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     expect(screen.queryAllByRole('textbox')).toHaveLength(0);
     expect(fetchMock.mock.calls.every(([url]) => url === '/api/business-status' || url.startsWith('/api/snapshot?'))).toBe(true);
@@ -57,7 +59,7 @@ test('closed mode fetches its snapshot once and returns to interactive kiosk whe
   expect(screen.getByRole('table')).toBeTruthy();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
   expect(fetchMock.mock.calls.filter(([path]) => path.startsWith('/api/snapshot?'))).toHaveLength(1);
-  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  expect(screen.queryAllByRole('button').filter(button => button.textContent !== 'Logout')).toHaveLength(0);
   state.status = businessStatus;
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   expect(screen.getByRole('button', { name: 'Check in' })).toBeTruthy();
@@ -75,7 +77,7 @@ test('closing unmounts live front desk polling and hides every action', async ()
   state.status = closed;
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   expect(screen.getByRole('table')).toBeTruthy();
-  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  expect(screen.queryAllByRole('button').filter(button => button.textContent !== 'Logout')).toHaveLength(0);
   const liveCalls = () => fetchMock.mock.calls.filter(([path]) => path.startsWith('/api/visits?')).length;
   const stoppedAt = liveCalls();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
@@ -87,7 +89,7 @@ test('snapshot load failure never falls back to interactive screens', async () =
     : { ok: false, status: 500, json: async () => ({ detail: 'Snapshot unavailable.' }) }));
   render(<App />);
   expect(await screen.findByRole('alert')).toBeTruthy();
-  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  expect(screen.queryAllByRole('button').filter(button => button.textContent !== 'Logout')).toHaveLength(0);
   expect(screen.queryAllByRole('radio')).toHaveLength(0);
   expect(screen.getByRole('status').textContent).toContain('Career center is closed');
 });

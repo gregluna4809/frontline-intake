@@ -14,14 +14,14 @@ Standalone Career Center intake and routing prototype. Synthetic data only; prod
 - Select a ticket, search and attach a customer, then route the visit. The panel shows the attached name/ID and routing result.
 - Identify and route use optimistic version checks and write FRONT_DESK events in the same transaction as the visit and resource updates.
 - Supervisor groups WAITING_STAFF visits into Unassigned and one group per LSR. Each visit shows ticket, type, appointment status, waiting time, and an Assign/Reassign control. Supervising LSRs are not assignable targets.
-- My Queue filters WAITING_STAFF visits to the LSR selected through View as. The selected staff ID is retained in `/my-queue?staff=...`. Close uses the existing endpoint; resource-room data and its role entry are absent from this view.
+- My Queue automatically shows appointments for the logged-in LSR, with navigation to Resource room. Center Managers can select any LSR through a Staff member picker; their selection is retained in `/my-queue?staff=...`. Close uses the existing endpoint; only managers see Reschedule in My Queue.
 - Both staff screens refresh every five seconds and provide manual refresh. Mutations use the current quoted version and trigger a reload; another action is blocked until the reload succeeds. `/appointments` redirects to `/supervisor`.
 
 - Resource room groups Phones, Computers, and Stations, showing status and the current ticket/customer for occupied resources. Close and Left release resources atomically.
 - WAITING_RESOURCE entries show the needed type and elapsed waiting time. Assign is disabled when no matching resource is free; Left remains available.
 - Occupied visits are flagged after more than 45 minutes at the resource. All queues refresh every five seconds.
 
-Steps 1–15 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; frontend login integration remains pending.
+Steps 1–16 are implemented. Production Docker images and Compose configuration are included for the synthetic portfolio deployment. The backend requires JWT authentication and enforces roles for staff APIs; staff log in through /login and receive role-based navigation.
 
 ## Run on Windows PowerShell
 
@@ -54,7 +54,7 @@ Prerequisites: Java 21, Node.js 22.12+ (Node 24 is supported), and Docker Deskto
    npm run dev
    ```
 
-4. Open http://127.0.0.1:5173/kiosk. Choose Walk-In and a reason, or Appointment and a category, then check in. The staff-screen workflow below requires frontend login integration after Step 14; use the authenticated API example below for now. Open http://127.0.0.1:5173/front-desk in another tab to select the ticket, search for Demo Customer 001, attach that customer, and route the visit. Routed appointments appear at http://127.0.0.1:5173/supervisor. Assign an LSR there, then choose that person's My Queue entry in View as to view and close their appointments. Walk-ins appear at http://127.0.0.1:5173/resource-room; occupied tiles have Close/Left, and waiting entries have Assign/Left.
+4. Open http://127.0.0.1:5173/kiosk for public check-in. For staff work, open http://127.0.0.1:5173/login and log in with a seeded account and password `demo1234`. Use `staff9` (Center Manager) to exercise the full workflow: Front desk to identify and route, Supervisor to assign an LSR, My Queue to select that LSR and close an appointment, or Resource room for walk-ins. Use `staff1` to verify the LSR experience: My Queue opens automatically with that LSR's appointments. The kiosk has no staff navigation or simulator controls.
 
 Stop the backend and frontend with Ctrl+C in their terminals. Stop this project's database with `docker compose stop` from the root. The named volume retains data.
 
@@ -171,7 +171,7 @@ The existing 8:30am Eastern business-day ticket-reset trigger also clears every 
 
 The minute schedule saves completed activity, including at 4:45pm Eastern. Capture also runs before visit/coverage mutations and before opening resets, using the same transaction advisory lock as ticket creation. This preserves the closing state even when the close schedule was missed, and prevents a later API change from rewriting an already saved snapshot. Existing data from before Step 9 is captured from the state available at first capture; exact pre-installation closing history cannot be recovered where it was never recorded. Direct database edits bypass application capture.
 
-After hours, all five routes use a shared read-only snapshot rendering. Kiosk and Front desk show final visits, Supervisor shows final appointments and coverage, My Queue shows the selected staff's final appointments, and Resource room shows final walk-ins and resource occupancy. A persistent banner names the frozen date. No mutation controls or simulator controls are rendered. Role navigation uses staff saved in the snapshot. Each closed period loads its snapshot once; live queue, inventory, and coverage polling stop. Only business-status polling continues every five seconds so the existing live screens return automatically at opening. Status or snapshot failures never fall back to an interactive screen.
+After hours, all five routes use a shared read-only snapshot rendering. Kiosk and Front desk show final visits, Supervisor shows final appointments and coverage, My Queue shows the selected staff's final appointments, and Resource room shows final walk-ins and resource occupancy. A persistent banner names the frozen date. No mutation controls or simulator controls are rendered. Staff navigation uses the logged-in identity. The manager queue picker uses staff saved in the snapshot. Each closed period loads its snapshot once; live queue, inventory, and coverage polling stop. Only business-status polling continues every five seconds so the existing live screens return automatically at opening. Status or snapshot failures never fall back to an interactive screen.
 
 Regression tests cover rollover without visit changes, migration ownership backfill, old-visit closing after resource reuse, repeated/concurrent resets, default and explicit snapshot dates, immutable snapshots after subsequent changes, missed schedules, all five closed routes, stopped live polling, and return to interactive mode.
 
@@ -211,7 +211,7 @@ Flyway V11 retains the existing four LSRs and one Supervising LSR and adds three
 | staff9 | Demo Center Manager 001 | CENTER_MANAGER |
 | staff10 | Demo Administrator 001 | ADMINISTRATOR |
 
-`POST /api/auth/login` accepts `{ "username": "staff1", "password": "demo1234" }` and returns `{ "token": "<JWT>", "tokenType": "Bearer", "expiresIn": 28800 }`. Incorrect credentials return 401 with the same message for unknown users and wrong passwords; malformed input returns 400. Tokens contain `staffId`, `role`, and `displayName`, plus subject (username), issuer, issued-at, and expiry. They expire after eight hours, independently of the business calendar. Log in again after expiry; there is no refresh or server-side logout session.
+`POST /api/auth/login` accepts `{ "username": "staff1", "password": "demo1234" }` and returns `{ "token": "<JWT>", "tokenType": "Bearer", "expiresIn": 28800, "staffId": 1, "role": "LSR", "displayName": "Demo Staff 001" }`. Incorrect credentials return 401 with the same message for unknown users and wrong passwords; malformed input returns 400. Tokens contain `staffId`, `role`, and `displayName`, plus subject (username), issuer, issued-at, and expiry. They expire after eight hours, independently of the business calendar. Log in again after expiry; there is no refresh or server-side logout session.
 
 The signing key comes only from `JWT_SECRET`. Startup rejects missing, invalid Base64, or keys shorter than 32 decoded bytes. The local startup example generates a random key; retain it securely between restarts if existing tokens should stay valid. `.env` is read by production Compose, not by a backend started directly from PowerShell. Test resources supply a separate test-only key.
 
@@ -235,7 +235,7 @@ $authHeaders = @{ Authorization = "Bearer $($login.token)" }
 Invoke-RestMethod -Uri http://127.0.0.1:8080/api/staff -Headers $authHeaders
 ```
 
-Step 14 implements backend infrastructure. The current frontend has no login/token handling, so live staff screens receive 401 until that integration is added. Public check-in, business status, and snapshot APIs remain available anonymously.
+Step 14 establishes backend authentication. Step 16 adds frontend login and sends bearer tokens for staff requests. Public check-in, business status, and snapshot APIs remain available anonymously.
 
 Tests cover login and claims for all ten accounts and all five roles, security-context claims, anonymous access boundaries, malformed/tampered/expired tokens, wrong issuers, stateless requests, BCrypt seeds, uniqueness/foreign keys, and migration of additional preexisting staff. Existing API regressions now use a signed Center Manager token while retaining the security filters.
 
@@ -257,7 +257,29 @@ For close and left, an LSR can act on an APPOINTMENT only when its current `assi
 
 `GET /api/visits?status=WAITING_STAFF` filters an LSR's results in SQL to their JWT staff ID. This applies to both the default business date and an explicit `businessDate`; query parameters such as `staffId`, `assignedStaffId`, or `role` cannot override the scope. Other roles see all matching visits, including unassigned appointments. Queries without that explicit status retain their previous behavior. `GET /api/rotation`, `/api/call-outs`, `/api/staff`, and `/api/resources` remain available to all authenticated roles with no added scoping; rotation and call-out reads still require their `date` parameter.
 
-The authorization suite logs in through the real API and tests all 45 restricted endpoint/role combinations, unchanged visits after denial, own/other/unassigned appointment access, walk-in access, manager access, stale ownership and concurrent reassignment, query-parameter spoofing, business-date filtering, and shared reads for all five roles. The broader workflow tests use a signed Center Manager JWT, including concurrent requests. Frontend login and role-aware controls remain pending.
+The authorization suite logs in through the real API and tests all 45 restricted endpoint/role combinations, unchanged visits after denial, own/other/unassigned appointment access, walk-in access, manager access, stale ownership and concurrent reassignment, query-parameter spoofing, business-date filtering, and shared reads for all five roles. The broader workflow tests use a signed Center Manager JWT, including concurrent requests. Step 16 adds frontend login and role-based navigation on top of these server-enforced rules.
+
+## Step 16: frontend login and role-based navigation
+
+`/login` accepts username/password and calls the public login API. The response now includes `staffId`, `role`, and `displayName` directly alongside the token, token type, and expiry. The frontend does not decode JWTs. Failed login stays on `/login` with an error; a successful login stores only token and identity in tab-scoped `sessionStorage` and opens the role's landing page. Reloads retain the session within that tab. The shared demo password remains **`demo1234`** for every seeded account.
+
+| Role | Demo account | Landing | Navigation |
+| --- | --- | --- | --- |
+| CLERK | staff6–staff8 | Front desk | Front desk |
+| LSR | staff1–staff4 | My Queue | My Queue, Resource room |
+| SUPERVISING_LSR | staff5 | Supervisor board | Supervisor |
+| CENTER_MANAGER | staff9 | Supervisor board | Supervisor, Front desk, My Queue, Resource room |
+| ADMINISTRATOR | staff10 | Admin placeholder | None yet |
+
+The View as dropdown is removed. Staff pages show the logged-in display name and role, permitted navigation links, and Logout. Logout clears stored authentication and replaces the current route with `/login`; browser Back cannot restore protected content. Direct navigation to a disallowed or unknown staff URL redirects to the role's landing before mounting that screen. `/appointments` also resolves to the caller's landing. Without a valid stored session, staff routes redirect to login. Administrator sees “Admin console — coming soon.” without operational data requests.
+
+The API client reads the current stored token for each authenticated request and adds `Authorization: Bearer <token>` while preserving other headers, including If-Match. A 401 clears authentication and redirects to `/login?expired=1`, displaying “Session expired, please log in again.” This applies to reads, mutations, and background requests. A login 401 instead displays the invalid-credentials error on the login page. Delayed 401 responses from a previous session cannot clear a newer login or overwrite an explicit logout. A 403 displays the server's permission error and keeps the session.
+
+LSRs automatically load their own My Queue using the logged-in staff ID. They have no staff picker, cannot override identity using `?staff=...`, and do not see Reschedule. Center Managers have a Staff member picker for LSR queues, retain selection in the URL, and can close or reschedule those appointments. After hours, the same identity and navigation rules apply to snapshots, and managers can select staff from the frozen snapshot.
+
+`/` and `/kiosk` remain fully public, with no staff identity, staff navigation, Logout, or simulator controls—even if the tab has a stored staff session. Public check-in, business-status, snapshot, and login calls omit the stored token. Login and the admin placeholder do not depend on business hours. Operational staff screens retain the existing closed-hours behavior and simulator controls. The backend remains the authorization boundary; changing browser state does not change server permissions.
+
+Tests cover login landings and links for all five roles, invalid credentials and incomplete responses, logout and route guards, forged staff selection, manager selection and reload, background and mutation 401s, delayed-response races, 403 handling, public kiosk isolation, and retained queue/snapshot behavior. Backend tests verify that every account's login identity fields match the signed JWT claims.
 
 ## Simplest choices where the spec is silent
 

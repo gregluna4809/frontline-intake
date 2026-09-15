@@ -53,10 +53,12 @@ public class AuthController {
                 .claim("displayName", user.staff().displayName()).build();
         String token = tokens.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
-        return new LoginResponse(token, "Bearer", TOKEN_LIFETIME.toSeconds());
+        return new LoginResponse(token, "Bearer", TOKEN_LIFETIME.toSeconds(),
+                user.staff().id(), user.staff().role().name(), user.staff().displayName());
     }
 
     public record LoginRequest(@NotBlank @Size(max = 100) String username,
                                @NotBlank @Size(max = 72) String password) { }
-    public record LoginResponse(String token, String tokenType, long expiresIn) { }
+    public record LoginResponse(String token, String tokenType, long expiresIn,
+                                long staffId, String role, String displayName) { }
 }
