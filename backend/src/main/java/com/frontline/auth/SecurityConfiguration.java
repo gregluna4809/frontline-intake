@@ -105,6 +105,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/visits", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/business-status", "/api/snapshot").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMINISTRATOR")
+                        .requestMatchers("/api/reports/**").hasAnyRole("CENTER_MANAGER", "ADMINISTRATOR")
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/identify", "/api/visits/{id}/route")
                             .hasAnyRole("CLERK", "CENTER_MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/assign", "/api/visits/{id}/close",

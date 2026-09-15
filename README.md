@@ -322,6 +322,28 @@ Holiday additions/removals affect subsequent calendar checks immediately without
 
 Tests cover all 50 admin endpoint/role combinations, the exact migrated dates, holiday-driven open/closed changes, account creation and password reset login, deactivation/reactivation and preserved history, assignment exclusion, role-token invalidation, rotation initialization and transactional rollback, validation/conflicts, retained snapshots, and management outside business hours. Frontend tests exercise all three sections, account actions, form errors/retry, 204 deletion handling, and Supervisor visibility of inactive staff assignments.
 
+## Step 18: reporting aggregation endpoint
+
+`GET /api/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` requires **CENTER_MANAGER** or **ADMINISTRATOR**. Other authenticated roles receive 403; unauthenticated requests receive 401. Both dates are required. Invalid dates, `from > to`, and ranges exceeding **90 calendar days inclusive** return 400. A single date is valid.
+
+The response is an array ordered by `businessDate`, with one entry per Monday-Friday date that is not in the current holiday table. Business days with no activity are included; a range containing only weekends/holidays returns `[]`. All visit metrics use the stored **visit.businessDate**, even if creation, resource arrival, or closure timestamps fall on another date. Call-outs use `call_out.date`.
+
+| Field | Definition |
+| --- | --- |
+| `volumeByCategory` | Counts of all visit tickets, regardless of status, with all eight keys always present: `PHONE_ACCESS`, `COMPUTER_ACCESS`, `DOCUMENT_SERVICES`, `BENEFITS_ASSISTANCE`, `JOB_SEARCH`, `OTHER`, `MANDATORY`, `JOB_SEARCH_ASSISTANCE`. Missing categories have count 0. |
+| `ftr.scheduledAppointments` | All appointment tickets for the business date, including rescheduled replacements. |
+| `ftr.ftrCount` | Appointment tickets with status `NOT_ATTENDED_FTR` or `FTR_REPORTED`. |
+| `ftr.ftrRate` | `ftrCount / scheduledAppointments` as a fraction (not a percentage), or 0 when there are no appointments. |
+| `avgResourceWaitMinutes` | Mean elapsed minutes from walk-in `createdAt` to its first transition into `AT_RESOURCE`. Each qualifying visit contributes once; same-status event notes do not count as arrivals. Null when no walk-ins reached a resource. |
+| `avgAppointmentDurationMinutes` | Mean elapsed minutes from `createdAt` to `closedAt` for appointments with status `CLOSED`. Includes FTR and rescheduling closures; excludes `LEFT` and open visits. Null when none qualify. |
+| `staffWorkload` | `{ staffId, displayName, closedCount }` for the same closed appointments, grouped and ordered by assigned staff ID. Includes inactive staff with their current display names. Unassigned appointments contribute to duration but not a staff group. Empty array when none qualify. |
+| `callOutCount` | Number of call-out rows for the date. |
+| `rescheduleCount` | Number of replacement appointment tickets with a non-null `previousVisitId`, attributed to the replacement's business date. This remains countable after its appointment status changes. |
+
+Call-outs and reschedules are independent raw counts; the report does not attribute one to the other. The endpoint reads live stored records in a consistent, read-only database transaction. It does not trigger rollover/FTR processing or change saved snapshots. Reports can therefore reflect later FTR updates, staff renames, or holiday edits; they are not frozen historical snapshots. No schema migration is required.
+
+`ReportApiTest` covers every role, missing/malformed/reversed/oversized ranges, the inclusive 90-day boundary, all categories, fractional FTR rates including rescheduled tickets, distinct resource-wait and appointment-duration calculations, business-date attribution across timestamp dates, inactive staff workload, independent call-out/reschedule counts, and zero/null defaults with weekend/holiday exclusion.
+
 ## Simplest choices where the spec is silent
 
 - Spring JDBC and parameterized SQL; Flyway owns the schema. SQL names use snake_case; Java and JSON retain the specified camelCase names.
