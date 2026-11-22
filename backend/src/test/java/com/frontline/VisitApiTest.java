@@ -5,6 +5,8 @@ import com.frontline.model.Resource;
 import com.frontline.business.BusinessCalendar;
 import com.frontline.visit.VisitRepository;
 import com.frontline.visit.VisitService;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -22,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -32,6 +35,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -50,9 +54,11 @@ class VisitApiTest {
     @Autowired BusinessCalendar calendar;
     @Autowired com.frontline.resource.ResourceRepository resources;
     @MockitoSpyBean VisitRepository repository;
+    @MockitoBean(name = "businessClock") Clock clock;
 
     @BeforeEach
     void clearVisits() {
+        when(clock.instant()).thenReturn(Instant.parse("2026-11-25T17:00:00Z"));
         jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
         jdbc.execute("DELETE FROM visit_event");
         jdbc.execute("DELETE FROM visit");
