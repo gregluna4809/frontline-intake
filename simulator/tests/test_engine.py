@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 from dataclasses import replace
 from itertools import cycle
@@ -9,7 +10,7 @@ import pytest
 
 from frontline_sim.api import Result, Status
 from frontline_sim.config import Config
-from frontline_sim.engine import Engine, arrival_count, help_outcome
+from frontline_sim.engine import Engine, QueueState, arrival_count, help_outcome
 
 
 @pytest.fixture
@@ -82,3 +83,71 @@ def test_restart_rebuilds_timers_without_duplicating_help_or_close(config):
     clerk.visit_action.assert_not_called()
     rr.visit_action.assert_called_once_with(computer, "close")
     assert not engine.sessions
+
+
+def test_pipeline_excludes_resource_and_appointment_queues(config):
+    visits = (
+        [{"status": "AT_RESOURCE"}] * 20
+        + [{"status": "WAITING_RESOURCE", "requiredResourceType": "PHONE"}] * 30
+        + [{"status": "WAITING_STAFF", "assignedStaffId": None}] * 8
+        + [{"status": "CHECKED_IN"}, {"status": "IDENTIFIED"}]
+    )
+    queues = QueueState.from_visits(visits)
+    assert queues.served == 20
+    assert queues.pipeline == 22
+    assert queues.waiting == 40
+    assert arrival_count(config, Random(0), queues.served, queues.pipeline) == 3
+
+
+def test_capped_resource_reason_is_redrawn(config):
+    engine, *_ = make_engine(config)
+    engine.api.counts = Counter()
+    # Seed 5 draws PHONE_ACCESS first even with appointments available.
+    engine.rng.seed(5)
+    reasons = [{"code": "JOB_SEARCH"}, {"code": "PHONE_ACCESS"}]
+    queues = QueueState(20, 0, Counter(PHONE=5), 0, 0)
+    engine.arrive(reasons, 1, queues)
+    engine.api.public.assert_called_once_with(
+        "POST", "/api/visits", json={"visitType": "WALK_IN", "reason": "JOB_SEARCH"},
+    )
+
+
+def test_all_capped_queues_prevent_arrivals(config):
+    engine, *_ = make_engine(config)
+    reasons = [{"code": "PHONE_ACCESS"}, {"code": "JOB_SEARCH"}, {"code": "OTHER"}]
+    queues = QueueState(20, 0, Counter(PHONE=5, COMPUTER=5, STATION=5), 4, 8)
+    engine.arrive(reasons, 3, queues)
+    engine.api.public.assert_not_called()
+
+
+def test_appointment_arrivals_stop_at_cap_and_resume_below_it(config):
+    engine, *_ = make_engine(config)
+    engine.api.counts = Counter()
+    visits = [{"status": "WAITING_STAFF", "assignedStaffId": 12}] * 4 + [
+        {"status": "WAITING_STAFF", "assignedStaffId": None}
+    ] * 4
+    queues = QueueState.from_visits(visits)
+    assert queues.served == 4
+    assert queues.appointments_waiting == 4
+    engine.arrive([], 1, queues)
+    engine.api.public.assert_not_called()
+    engine.arrive([], 1, QueueState.from_visits(visits[:-1]))
+    engine.api.public.assert_called_once_with(
+        "POST", "/api/visits", json={"visitType": "APPOINTMENT", "appointmentCategory": "MANDATORY"},
+    )
+
+
+def test_summary_includes_resource_and_appointment_queue_lengths(config, caplog):
+    engine, *_ = make_engine(config)
+    engine.api.counts = Counter()
+    engine.reader.visits.return_value = ok([
+        {"status": "WAITING_RESOURCE", "requiredResourceType": "PHONE"},
+        {"status": "WAITING_RESOURCE", "requiredResourceType": "COMPUTER"},
+        {"status": "WAITING_RESOURCE", "requiredResourceType": "COMPUTER"},
+        {"status": "WAITING_STAFF", "assignedStaffId": None},
+        {"status": "WAITING_STAFF", "assignedStaffId": 12},
+    ])
+    engine.reader.help_requests.return_value = ok([])
+    with caplog.at_level(logging.INFO):
+        engine.summary(60)
+    assert "waitingPhone=1 waitingComputer=2 waitingStation=0 waitingAppointments=1" in caplog.text

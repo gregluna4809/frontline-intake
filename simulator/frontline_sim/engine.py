@@ -11,7 +11,12 @@ REASON_WEIGHTS = {
     "UI_ACCOUNT": 70, "JOB_SEARCH": 5, "COMPUTER_ACCESS": 3, "DOCUMENT_SERVICES": 2,
     "BENEFITS_ASSISTANCE": 2, "OTHER": 1, "PHONE_ACCESS": 70,
 }
-WAITING = {"WAITING_RESOURCE", "WAITING_STAFF", "CHECKED_IN", "IDENTIFIED"}
+RESOURCE_BY_REASON = {
+    "PHONE_ACCESS": "PHONE",
+    "UI_ACCOUNT": "COMPUTER", "COMPUTER_ACCESS": "COMPUTER", "JOB_SEARCH": "COMPUTER",
+    "DOCUMENT_SERVICES": "STATION", "BENEFITS_ASSISTANCE": "STATION", "OTHER": "STATION",
+}
+IN_TRANSIT = {"CHECKED_IN", "IDENTIFIED"}
 
 
 def arrival_count(config, rng, served, pipeline):
@@ -38,10 +43,30 @@ def in_appointment(visit):
     return visit["status"] == "WAITING_STAFF" and visit["assignedStaffId"] is not None
 
 
-def occupancy(visits):
-    served = sum(visit["status"] == "AT_RESOURCE" or in_appointment(visit) for visit in visits)
-    waiting = sum(visit["status"] in WAITING and not in_appointment(visit) for visit in visits)
-    return served, waiting
+@dataclass
+class QueueState:
+    served: int
+    in_transit: int
+    resources: Counter
+    appointments_waiting: int
+    appointments_in_queue: int
+
+    @property
+    def pipeline(self):
+        return self.served + self.in_transit
+
+    @property
+    def waiting(self):
+        return self.in_transit + self.resources.total() + self.appointments_waiting
+
+    @classmethod
+    def from_visits(cls, visits):
+        served = sum(v["status"] == "AT_RESOURCE" or in_appointment(v) for v in visits)
+        in_transit = sum(v["status"] in IN_TRANSIT for v in visits)
+        resources = Counter(v["requiredResourceType"] for v in visits if v["status"] == "WAITING_RESOURCE")
+        appointments = [v for v in visits if v["status"] == "WAITING_STAFF"]
+        unassigned = sum(v["assignedStaffId"] is None for v in appointments)
+        return cls(served, in_transit, resources, unassigned, len(appointments))
 
 
 def timestamp(value):
@@ -110,8 +135,8 @@ class Engine:
         visits = sorted(visits.data, key=lambda v: (v["createdAt"], v["id"]))
         open_help = [row for row in history.data if row["closedAt"] is None]
         bot_ids = {person["id"] for person in staff.data if person["displayName"].startswith("Bot ")}
-        served, waiting = occupancy(visits)
-        self.arrive(reasons.data, arrival_count(self.config, self.rng, served, served + waiting))
+        queues = QueueState.from_visits(visits)
+        self.arrive(reasons.data, arrival_count(self.config, self.rng, queues.served, queues.pipeline), queues)
         self.waiting_work(visits, resources.data, timestamp(business.data["serverNow"]))
         self.clerk_work(visits, now)
         busy = {row["claimedByStaffId"] for row in open_help if row["claimedByStaffId"] is not None}
@@ -124,22 +149,48 @@ class Engine:
         # Read after mutations so the summary reports the state at the sample time.
         visits = self.reader.visits(self.day) if self.day else None
         help_rows = self.reader.help_requests(self.day) if self.day else None
-        served, waiting = occupancy(visits.data) if visits else (None, None)
+        queues = QueueState.from_visits(visits.data) if visits else None
         open_help = len(help_rows.data) if help_rows else None
         elapsed = (now - self.last_summary) / 60
         counts = self.api.counts
-        LOG.info("beingServed=%s waiting=%s openHelp=%s arrivals/min=%.1f actions/min=%.1f "
+        LOG.info("beingServed=%s waiting=%s waitingPhone=%s waitingComputer=%s waitingStation=%s "
+                 "waitingAppointments=%s openHelp=%s arrivals/min=%.1f actions/min=%.1f "
                  "conflicts/min=%.1f errors/min=%.1f",
-                 served, waiting, open_help, counts["arrivals"] / elapsed, counts["actions"] / elapsed,
+                 queues.served if queues else None, queues.waiting if queues else None,
+                 queues.resources["PHONE"] if queues else None, queues.resources["COMPUTER"] if queues else None,
+                 queues.resources["STATION"] if queues else None, queues.appointments_waiting if queues else None,
+                 open_help, counts["arrivals"] / elapsed, counts["actions"] / elapsed,
                  counts["conflicts"] / elapsed, counts["errors"] / elapsed)
         self.last_summary = now
         counts.clear()
 
-    def arrive(self, reasons, count):
+    def arrival_reason(self, weights, queues):
+        eligible = weights.copy()
+        # Draw once, then redraw up to five times without selecting a capped type again.
+        for _ in range(6):
+            if not eligible:
+                return None
+            reason, = self.rng.choices(tuple(eligible), weights=tuple(eligible.values()))
+            if reason == "APPOINTMENT":
+                return reason
+            resource_type = RESOURCE_BY_REASON[reason]
+            if queues.resources[resource_type] < self.config.max_waiting_per_resource:
+                return reason
+            eligible = {
+                candidate: weight for candidate, weight in eligible.items()
+                if candidate != "APPOINTMENT" and RESOURCE_BY_REASON[candidate] != resource_type
+            }
+        return None
+
+    def arrive(self, reasons, count, queues):
         active = {row["code"] for row in reasons}
         weights = {reason: weight for reason, weight in REASON_WEIGHTS.items() if reason in active}
-        weights["APPOINTMENT"] = 20
-        for reason in self.rng.choices(tuple(weights), weights=tuple(weights.values()), k=count):
+        if queues.appointments_in_queue < self.config.max_waiting_appointments:
+            weights["APPOINTMENT"] = 20
+        for _ in range(count):
+            reason = self.arrival_reason(weights, queues)
+            if reason is None:
+                break
             if reason == "APPOINTMENT":
                 category, = self.rng.choices(("MANDATORY", "JOB_SEARCH_ASSISTANCE"), (95, 5))
                 body = {"visitType": "APPOINTMENT", "appointmentCategory": category}

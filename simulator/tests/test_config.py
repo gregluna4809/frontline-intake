@@ -11,6 +11,7 @@ def test_config_defaults_and_overrides():
     assert config.appt_lsr_users == tuple(f"bot-lsr-{i:02}" for i in range(5, 9))
     assert config.supervisor_user == "bot-supervisor-01"
     assert (config.tick_seconds, config.target_min, config.target_max, config.max_arrivals_per_tick) == (2, 30, 40, 3)
+    assert (config.max_waiting_per_resource, config.max_waiting_appointments) == (5, 8)
     assert config.session_seconds_phone == (60, 180)
     assert config.session_seconds_computer == (90, 300)
     assert config.session_seconds_station == (30, 90)
@@ -36,3 +37,12 @@ def test_invalid_range(value):
 def test_missing_bot_password():
     with pytest.raises(ValueError, match="SIM_BOT_PASSWORD is required"):
         Config.from_env({})
+
+
+def test_queue_caps_use_appointment_roster_default_and_allow_overrides():
+    env = {"SIM_BOT_PASSWORD": "test-only", "SIM_APPT_LSR_USERS": "bot-appt-01,bot-appt-02"}
+    assert Config.from_env(env).max_waiting_appointments == 4
+    config = Config.from_env(env | {
+        "SIM_MAX_WAITING_PER_RESOURCE": "0", "SIM_MAX_WAITING_APPOINTMENTS": "3",
+    })
+    assert (config.max_waiting_per_resource, config.max_waiting_appointments) == (0, 3)

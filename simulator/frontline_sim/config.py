@@ -15,6 +15,7 @@ DEFAULTS = {
     "TARGET_MIN": ("30", "count"),
     "TARGET_MAX": ("40", "count"),
     "MAX_ARRIVALS_PER_TICK": ("3", "count"),
+    "MAX_WAITING_PER_RESOURCE": ("5", "count"),
     "SESSION_SECONDS_PHONE": ("60-180", "range"),
     "SESSION_SECONDS_COMPUTER": ("90-300", "range"),
     "SESSION_SECONDS_STATION": ("30-90", "range"),
@@ -107,6 +108,8 @@ class Config:
     target_min: int
     target_max: int
     max_arrivals_per_tick: int
+    max_waiting_per_resource: int
+    max_waiting_appointments: int
     session_seconds_phone: tuple[int, int]
     session_seconds_computer: tuple[int, int]
     session_seconds_station: tuple[int, int]
@@ -133,6 +136,13 @@ class Config:
                 values[name.lower()] = parse_value(env.get(f"SIM_{name}", default), kind)
             except ValueError as error:
                 raise ValueError(f"SIM_{name}: {error}") from None
+        try:
+            values["max_waiting_appointments"] = parse_value(
+                env.get("SIM_MAX_WAITING_APPOINTMENTS", str(2 * len(values["appt_lsr_users"]))),
+                "count",
+            )
+        except ValueError as error:
+            raise ValueError(f"SIM_MAX_WAITING_APPOINTMENTS: {error}") from None
         try:
             seed = int(env["SIM_SEED"]) if env.get("SIM_SEED") else None
         except ValueError:
