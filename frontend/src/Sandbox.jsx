@@ -4,7 +4,7 @@ import { landingPage, navigate, saveAuth } from './auth.js';
 import { ServerTime, useServerNow } from './ServerTime.jsx';
 
 export const scenarioLabel = value => value === 'BEHAVIOR_UNCHANGED' ? 'Nothing changed' : 'New system works';
-export function SandboxRoles() {
+export function SandboxRoles({ landing = false } = {}) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   async function login(role) {
@@ -15,8 +15,12 @@ export function SandboxRoles() {
     } catch (failure) { setError(failure.message); }
     finally { setPending(false); }
   }
-  return <section aria-label="Sandbox staff login"><div className="sandbox-actions">
-    {[['CLERK', 'Clerk'], ['LSR', 'LSR'], ['SUPERVISING_LSR', 'Supervising LSR'], ['CENTER_MANAGER', 'Center Manager']]
+  const roles = [['CLERK', 'Clerk'], ['LSR', 'LSR'], ['SUPERVISING_LSR', 'Supervising LSR']];
+  if (!landing) roles.push(['CENTER_MANAGER', 'Center Manager']);
+  return <section aria-label="Sandbox staff login">
+    {landing && <button className="primary sandbox-manager" disabled={pending} onClick={() => login('CENTER_MANAGER')}>Jump in as Center Manager</button>}
+    <div className="sandbox-actions">
+    {roles
       .map(([role, label]) => <button key={role} disabled={pending} onClick={() => login(role)}>{label}</button>)}
   </div>{error && <p role="alert">{error}</p>}</section>;
 }
@@ -52,10 +56,42 @@ export function SandboxBanner({ state, status }) {
   return <ServerTime.Provider value={status}><Banner state={state} liveUrl={status?.liveUrl} /></ServerTime.Provider>;
 }
 
+const sandboxDate = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric',
+});
+const sandboxTime = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit',
+});
+
+function SandboxSummary() {
+  const [summary, setSummary] = useState(null);
+  useEffect(() => {
+    let mounted = true;
+    let timer;
+    async function load() {
+      try {
+        const data = await request('/api/sandbox/summary');
+        if (mounted) setSummary(data);
+      } catch {
+        // Keep the last successful summary while retrying.
+      } finally {
+        if (mounted) timer = setTimeout(load, 5000);
+      }
+    }
+    load();
+    return () => { mounted = false; clearTimeout(timer); };
+  }, []);
+  if (!summary?.sandboxNow) return null;
+  const now = new Date(summary.sandboxNow);
+  return <p className="sandbox-summary">{sandboxDate.format(now)}, {sandboxTime.format(now)}
+    {' · '}{summary.beingServed} being served · {summary.waiting} waiting · {summary.openHelp} help {summary.openHelp === 1 ? 'request' : 'requests'}
+  </p>;
+}
+
 export default function ForkPage({ status, state }) {
   const [mode, setMode] = useState('NEXT');
   const [date, setDate] = useState('');
-  const [time, setTime] = useState('09:30');
+  const [time, setTime] = useState('10:15');
   const [speed, setSpeed] = useState(5);
   const [scenario, setScenario] = useState('SHIFT_TO_ONLINE');
   const [pending, setPending] = useState(false);
@@ -78,7 +114,10 @@ export default function ForkPage({ status, state }) {
       <section><h2>Try the sandbox</h2><p>Dummy data, any day, sped up</p>
         {status.sandboxUrl ? <a className="sandbox-link" href={status.sandboxUrl}>Try the sandbox</a> : <p>Sandbox coming soon</p>}
       </section></div></main>;
-  return <main className="fork-page"><h1>Frontline Sandbox</h1><section><h2>Start a day</h2>
+  return <main className="fork-page"><h1>Frontline Sandbox</h1>
+    <SandboxSummary />
+    <SandboxRoles landing />
+    <details><summary>Pick a different day</summary>
     <form onSubmit={start}><fieldset disabled={pending || state?.warming} className="sandbox-form">
       <label>Day<select value={mode} onChange={event => setMode(event.target.value)}>
         <option value="NEXT">Next business day</option><option value="RANDOM">Random business day</option><option value="DATE">Pick date</option>
@@ -92,6 +131,6 @@ export default function ForkPage({ status, state }) {
     </fieldset></form>
     {(pending || state?.warming) && <p role="status">Warming up the day...</p>}
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
-    </section><h2>Choose a role</h2><SandboxRoles /><p><a href="/kiosk">Kiosk</a>
+    </details><p><a href="/kiosk">Kiosk</a>
       {status.liveUrl && <> · <a href={status.liveUrl}>Back to the live site</a></>}</p></main>;
 }

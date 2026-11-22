@@ -1,5 +1,7 @@
 package com.frontline.simulator;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/simulator")
 public class SimulatorController {
@@ -9,7 +11,12 @@ public class SimulatorController {
     @PostMapping("/start")
     public TrafficSimulator.Status start() { return simulator.start(); }
     @PostMapping("/stop")
-    public TrafficSimulator.Status stop() { return simulator.stop(); }
+    public TrafficSimulator.Status stop() {
+        if (simulator.sandboxEnabled()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sandbox simulator cannot be stopped.");
+        }
+        return simulator.stop();
+    }
     @GetMapping("/status")
     public TrafficSimulator.Status status() { return simulator.status(); }
     @GetMapping("/switches")

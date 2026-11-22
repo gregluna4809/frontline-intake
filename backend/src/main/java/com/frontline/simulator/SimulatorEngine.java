@@ -20,12 +20,14 @@ public class SimulatorEngine {
         this.repository = repository; this.settings = settings; this.work = work; this.visits = visits;
         this.sandbox = sandbox;
     }
+    public boolean sandboxEnabled() { return sandbox.enabled(); }
     public boolean warming() { return sandbox.warming(); }
     public SimulatorProperties.Scenario scenario() { return sandbox.scenario(settings.scenario()); }
     public int tick(LocalDate date, Instant now) {
         var day = repository.day(date).orElseGet(() -> {
             long seed = new Random().nextLong();
-            return repository.createDay(date, seed, settings.rangeFor(date).draw(new Random(seed)));
+            int drawn = settings.rangeFor(date).draw(new Random(seed));
+            return repository.createDay(date, seed, sandbox.targetArrivals(drawn));
         });
         if (day.sweptAt() != null) return 0;
         int created = 0;

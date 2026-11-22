@@ -1,6 +1,5 @@
 package com.frontline.sandbox;
 
-import java.time.LocalTime;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -12,5 +11,5 @@ public class SandboxNightlyReset {
     private final SandboxService service;
     public SandboxNightlyReset(SandboxService service) { this.service = service; }
     @Scheduled(cron = "0 0 3 * * *", zone = "America/New_York")
-    public void reset() { service.start(new SandboxService.DayInput(SandboxService.Mode.NEXT,null,LocalTime.of(9,30),5,Scenario.SHIFT_TO_ONLINE),true); }
+    public void reset() { service.start(new SandboxService.DayInput(SandboxService.Mode.NEXT,null,null,5,Scenario.SHIFT_TO_ONLINE),true); }
 }

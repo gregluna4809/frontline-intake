@@ -5,7 +5,7 @@ export async function request(path, options = {}) {
   const pathname = new URL(path, window.location.origin).pathname;
   const login = ['/api/auth/login', '/api/sandbox/login'].includes(pathname) && method === 'POST';
   const publicRequest = login || (method === 'POST' && pathname === '/api/visits') ||
-    (method === 'GET' && ['/api/sandbox/state', '/api/business-status', '/api/snapshot', '/api/visit-reasons'].includes(pathname));
+    (method === 'GET' && ['/api/sandbox/state', '/api/sandbox/summary', '/api/business-status', '/api/snapshot', '/api/visit-reasons'].includes(pathname));
   const requestToken = getAuth()?.token || null;
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (!publicRequest && requestToken) headers.Authorization = 'Bearer ' + requestToken;

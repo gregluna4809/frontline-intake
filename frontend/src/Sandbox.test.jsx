@@ -25,17 +25,19 @@ test.each([null, 'https://sandbox.example'])('live fork is visible after hours w
 
 test('sandbox start posts selected settings and shows warming progress', async () => {
   let finish;
-  const fetchMock = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+  const fetchMock = vi.fn(path => path === '/api/sandbox/day'
+    ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(ok(null)));
   vi.stubGlobal('fetch', fetchMock);
   render(<ForkPage status={{ ...status, sandbox: true }} state={{ enabled: true }} />);
   const user = userEvent.setup();
+  await user.click(screen.getByText('Pick a different day'));
   await user.selectOptions(screen.getByLabelText('Day'), 'DATE');
   await user.type(screen.getByLabelText('Date'), '2026-11-30');
   await user.selectOptions(screen.getByLabelText('Speed'), '10');
   await user.selectOptions(screen.getByLabelText('Scenario'), 'BEHAVIOR_UNCHANGED');
   await user.click(screen.getByRole('button', { name: 'Start' }));
   expect(screen.getByText('Warming up the day...')).toBeTruthy();
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ mode: 'DATE', date: '2026-11-30', time: '09:30', speed: 10, scenario: 'BEHAVIOR_UNCHANGED' });
+  expect(JSON.parse(fetchMock.mock.calls.find(([path]) => path === '/api/sandbox/day')[1].body)).toEqual({ mode: 'DATE', date: '2026-11-30', time: '10:15', speed: 10, scenario: 'BEHAVIOR_UNCHANGED' });
   finish(ok({ arrivalsSoFar: 20, target: 270 }));
   expect(await screen.findByText('Day ready · 20 / 270 arrivals')).toBeTruthy();
 });
@@ -81,7 +83,7 @@ test('display clock advances at sandbox speed between status polls', () => {
 test('warming state disables starting another sandbox day', () => {
   render(<ForkPage status={{ ...status, sandbox: true }} state={{ enabled: true, warming: true }} />);
   expect(screen.getByText('Warming up the day...')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Start' }).closest('fieldset').disabled).toBe(true);
+  expect(screen.getByText('Start').closest('fieldset').disabled).toBe(true);
 });
 
 test.each(['/front-desk', '/supervisor', '/my-queue', '/resource-room', '/kiosk'])('sandbox banner appears on %s and frozen views', async path => {
@@ -113,4 +115,22 @@ test.each([false, true])('kiosk retains check-in behavior with sandbox=%s', asyn
   await user.click(screen.getByRole('button', { name: 'Check in' }));
   expect(await screen.findByText('B0001')).toBeTruthy();
   expect(fetchMock).toHaveBeenCalledWith('/api/visits', expect.objectContaining({ body: '{"visitType":"WALK_IN","reason":"UI_ACCOUNT"}' }));
+});
+
+test('sandbox landing polls the summary and puts the primary manager button above collapsed day options', async () => {
+  vi.useFakeTimers();
+  const data = { sandboxNow: '2026-11-30T15:17:00Z', beingServed: 36, waiting: 7, openHelp: 4, arrivalsToday: 90 };
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(ok(data))
+    .mockResolvedValueOnce(ok({ ...data, beingServed: 38 }));
+  vi.stubGlobal('fetch', fetchMock);
+  await act(async () => render(<ForkPage status={{ ...status, sandbox: true }} state={{ enabled: true }} />));
+  expect(screen.getByText('Mon, Nov 30, 10:17 AM · 36 being served · 7 waiting · 4 help requests')).toBeTruthy();
+  const buttons = screen.getAllByRole('button');
+  expect(buttons[0]).toBe(screen.getByRole('button', { name: 'Jump in as Center Manager' }));
+  expect(buttons[0].classList.contains('primary')).toBe(true);
+  expect(screen.getByText('Pick a different day').closest('details').open).toBe(false);
+  await act(async () => vi.advanceTimersByTimeAsync(5000));
+  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/sandbox/summary', '/api/sandbox/summary']);
+  expect(screen.getByText(/38 being served/)).toBeTruthy();
 });

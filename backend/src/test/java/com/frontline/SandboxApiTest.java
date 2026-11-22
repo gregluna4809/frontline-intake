@@ -14,13 +14,18 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -28,15 +33,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @org.springframework.context.annotation.Import(AuthenticatedApiTestConfiguration.class)
 @Testcontainers
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SandboxApiTest {
     @Container @ServiceConnection static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17");
-    @MockitoBean(name="realClock") Clock real;
+    @MockitoBean TaskScheduler scheduler;
+    @TestBean(name="realClock") Clock real;
+    static Clock real() {
+        Clock clock = mock(Clock.class);
+        when(clock.instant()).thenReturn(REAL);
+        return clock;
+    }
     @Autowired @Qualifier("businessClock") Clock clock;
     @Autowired SandboxService service;
     @Autowired SandboxStateRepository state;
     @Autowired SandboxNightlyReset nightly;
     @Autowired TrafficSimulator simulator;
-    @Autowired SimulatorRepository sims;
+    @MockitoSpyBean SimulatorRepository sims;
     @Autowired SimulatorProperties settings;
     @Autowired BusinessCalendar calendar;
     @Autowired TicketSequenceService tickets;
@@ -44,8 +56,17 @@ class SandboxApiTest {
     @Autowired com.frontline.visit.VisitService visits;
     @Autowired HelpRequestService helps;
     @Autowired JdbcTemplate jdbc;
+    @Autowired JdbcClient jdbcClient;
     @Autowired MockMvc mvc;
     private static final Instant REAL = Instant.parse("2026-11-25T15:00:00Z");
+    private SandboxService.StateResponse startup;
+    private SandboxService.SummaryResponse startupSummary;
+
+    @BeforeAll void captureStartup() {
+        startup = service.state();
+        startupSummary = service.summary();
+    }
+
     @BeforeEach void reset() {
         when(real.instant()).thenReturn(REAL);
         ((SandboxClock)clock).release();
@@ -144,10 +165,96 @@ class SandboxApiTest {
         mvc.perform(get("/api/admin/staff")).andExpect(status().isForbidden());
         jdbc.update("UPDATE sandbox_state SET warming=FALSE"); simulator.stop();
     }
-    @Test void nightlyResetBypassesRateLimitAndStartsNextAtNineThirty() {
+    @Test void nightlyResetBypassesRateLimitAndStartsNextAtTenFifteen() {
         service.start(input("2026-11-25","08:30",1)); nightly.reset();
-        assertThat(clock.instant()).isEqualTo(Instant.parse("2026-11-30T14:30:00Z"));
+        assertThat(clock.instant()).isEqualTo(Instant.parse("2026-11-30T15:15:00Z"));
         assertThat(state.state().speed()).isEqualTo(5);
         assertThat(state.state().scenario()).isEqualTo(SimulatorProperties.Scenario.SHIFT_TO_ONLINE);
     }
+
+    @Test void startupWarmsTheNextBusinessDay() {
+        assertThat(startup.sandboxNow()).isEqualTo(Instant.parse("2026-11-30T15:15:00Z"));
+        assertThat(startup.dayStartedAt()).isEqualTo(REAL);
+        assertThat(startup.warming()).isFalse();
+        assertThat(startupSummary.arrivalsToday()).isPositive();
+    }
+
+    @Test void idleMinuteCheckWarmsTheNextBusinessDayAndMultipliesTheTarget() {
+        service.reconcile();
+        LocalDate date = LocalDate.parse("2026-11-30");
+        var day = sims.day(date).orElseThrow();
+        int drawn = settings.rangeFor(date).draw(new java.util.Random(day.seed()));
+        assertThat(day.targetArrivals()).isEqualTo((int) Math.round(drawn * 1.4));
+        assertThat(clock.instant()).isEqualTo(Instant.parse("2026-11-30T15:15:00Z"));
+        assertThat(day.arrivalsSoFar()).isPositive();
+        assertThat(simulator.status().running()).isTrue();
+    }
+
+    @Test void minuteCheckRollsAt1530AndSkipsHolidaysAndWeekends() {
+        service.start(new SandboxService.DayInput(SandboxService.Mode.DATE,
+                LocalDate.parse("2026-11-25"), LocalTime.of(15, 29), 1,
+                SimulatorProperties.Scenario.BEHAVIOR_UNCHANGED));
+        service.reconcile();
+        assertThat(clock.instant()).isEqualTo(Instant.parse("2026-11-25T20:29:00Z"));
+        when(real.instant()).thenReturn(REAL.plusSeconds(60));
+        service.reconcile();
+        assertThat(clock.instant()).isEqualTo(Instant.parse("2026-11-30T15:15:00Z"));
+        assertThat(state.state().scenario()).isEqualTo(SimulatorProperties.Scenario.BEHAVIOR_UNCHANGED);
+        assertThat(state.state().speed()).isEqualTo(5);
+        assertThat(count("SELECT count(*) FROM sim_day WHERE swept_at IS NOT NULL")).isZero();
+        assertThat(count("SELECT count(*) FROM business_day_snapshot WHERE business_date IN (DATE '2026-11-25', DATE '2026-11-30') AND jsonb_array_length(payload->'visits') > 0")).isZero();
+    }
+
+    @Test void minuteCheckRollsImmediatelyWhenClosed() {
+        service.start(input("2026-11-30", "16:30", 5));
+        when(real.instant()).thenReturn(REAL.plusSeconds(192));
+        assertThat(calendar.isOpenNow()).isFalse();
+        service.reconcile();
+        assertThat(clock.instant()).isEqualTo(Instant.parse("2026-12-01T15:15:00Z"));
+    }
+
+    @Test void minuteCheckLeavesWarmingAloneAndRestartsStoppedSimulator() throws Exception {
+        jdbc.update("UPDATE sandbox_state SET warming = TRUE");
+        service.reconcile();
+        assertThat(state.state().dayStartedAt()).isNull();
+        assertThat(simulator.status().running()).isFalse();
+        jdbc.update("UPDATE sandbox_state SET warming = FALSE");
+        service.reconcile();
+        simulator.stop();
+        service.reconcile();
+        assertThat(simulator.status().running()).isTrue();
+        mvc.perform(post("/api/simulator/stop")).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("The sandbox simulator cannot be stopped."));
+        assertThat(simulator.status().running()).isTrue();
+    }
+
+    @Test void fixedSeedWarmStartAtTenFifteenAndAnonymousSummaryCounts() throws Exception {
+        for (String table : java.util.List.of("visit", "sim_task")) {
+            jdbc.queryForObject("SELECT setval(pg_get_serial_sequence(?, 'id'), 1, false)", Long.class, table);
+        }
+        long seed = 42L;
+        LocalDate date = LocalDate.parse("2026-11-30");
+        int target = (int) Math.round(settings.rangeFor(date).draw(new java.util.Random(seed)) * 1.4);
+        var seededRepository = new SimulatorRepository(jdbcClient);
+        doAnswer(call -> seededRepository.createDay(date, seed, target))
+                .when(sims).createDay(eq(date), anyLong(), anyInt());
+        service.start(new SandboxService.DayInput(SandboxService.Mode.DATE, date, null, null, null));
+        var summary = service.summary();
+        System.out.println("S2.1 fixed seed 42 beingServed=" + summary.beingServed());
+        assertThat(summary.beingServed()).isBetween(25L, 40L);
+        assertThat(summary.sandboxNow()).isEqualTo(Instant.parse("2026-11-30T15:15:00Z"));
+        long appointments = count("""
+                SELECT count(*) FROM visit v WHERE visit_type = 'APPOINTMENT' AND status = 'WAITING_STAFF'
+                  AND EXISTS (SELECT 1 FROM sim_task t WHERE t.visit_id = v.id
+                              AND t.action = 'CLOSE_APPOINTMENT' AND t.done_at IS NULL)
+                """);
+        mvc.perform(get("/api/sandbox/summary").header("Authorization", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sandboxNow").value("2026-11-30T15:15:00Z"))
+                .andExpect(jsonPath("$.beingServed").value(count("SELECT count(*) FROM visit WHERE visit_type = 'WALK_IN' AND status = 'AT_RESOURCE'") + appointments))
+                .andExpect(jsonPath("$.waiting").value(count("SELECT count(*) FROM visit WHERE status IN ('WAITING_RESOURCE', 'WAITING_STAFF')")))
+                .andExpect(jsonPath("$.openHelp").value(count("SELECT count(*) FROM help_request WHERE closed_at IS NULL")))
+                .andExpect(jsonPath("$.arrivalsToday").value(count("SELECT count(*) FROM visit")));
+    }
+
 }

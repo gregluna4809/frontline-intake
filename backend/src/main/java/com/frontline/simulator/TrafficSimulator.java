@@ -40,6 +40,7 @@ public class TrafficSimulator {
         if (!running || warming() || !calendar.isOpenNow()) return;
         createdSinceStart += engine.tick(calendar.currentBusinessDate(), clock.instant());
     }
+    public boolean sandboxEnabled() { return engine.sandboxEnabled(); }
     public boolean warming() { return engine.warming(); }
     public record Status(boolean running, int arrivalsPerMinute, long createdSinceStart,
                          int targetArrivals, int arrivalsSoFar, long openTaskCount, SimulatorProperties.Scenario scenario,

@@ -216,6 +216,9 @@ footer { text-align: center; color: #748378; font-size: 12px; padding: 24px; }
 .fork-page { max-width: 1050px; margin: auto; }
 .fork-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
 .fork-cards section, .fork-page > section { padding: 1.5rem; border: 1px solid #d7e1e7; border-radius: 12px; background: white; }
+.sandbox-summary { padding: 1rem; background: #eef4f8; border-radius: .5rem; }
+.sandbox-manager { font-size: 1.125rem; padding: .85rem 1.25rem; margin-bottom: .75rem; }
+.fork-page details { margin-top: 1rem; }
 .sandbox-actions, .sandbox-form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
 .sandbox-form label { display: grid; gap: .4rem; }
 .sandbox-form { border: 0; padding: 0; }

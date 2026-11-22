@@ -10,6 +10,9 @@ public class SandboxContext {
     public SandboxContext(SandboxProperties properties, SandboxStateRepository repository) { this.properties = properties; this.repository = repository; }
     public boolean enabled() { return properties.enabled(); }
     public boolean warming() { return enabled() && repository.state().warming(); }
+    public int targetArrivals(int drawn) {
+        return enabled() ? (int) Math.round(drawn * properties.trafficMultiplier()) : drawn;
+    }
     public int speed() { return enabled() ? repository.state().speed() : 1; }
     public Scenario scenario(Scenario live) { return enabled() ? repository.state().scenario() : live; }
 }

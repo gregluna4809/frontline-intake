@@ -8,5 +8,6 @@ public class SandboxController {
     private final SandboxService service;
     public SandboxController(SandboxService service) { this.service = service; }
     @GetMapping("/state") public SandboxService.StateResponse state() { return service.state(); }
+    @GetMapping("/summary") public SandboxService.SummaryResponse summary() { return service.summary(); }
     @PostMapping("/day") public SandboxService.DayResponse day(@RequestBody SandboxService.DayInput input) { return service.start(input); }
 }

@@ -103,7 +103,7 @@ public class SecurityConfiguration {
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
                         .accessDeniedHandler(forbidden))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.GET, "/api/sandbox/state").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/sandbox/state", "/api/sandbox/summary").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/sandbox/login").permitAll()
                         .requestMatchers("/api/sandbox/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/visits", "/api/auth/login").permitAll()
