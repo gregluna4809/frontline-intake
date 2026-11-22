@@ -22,9 +22,12 @@ auth:
 
 frontline:
   sandbox:
+    url: ${SANDBOX_URL:}
     enabled: ${SANDBOX_MODE:false}
     random-from: 2026-11-02
     random-to: 2026-12-31
+  live:
+    url: ${LIVE_URL:}
 
 simulator:
   enabled: false

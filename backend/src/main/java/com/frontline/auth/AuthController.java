@@ -45,16 +45,20 @@ public class AuthController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password.");
         }
         var user = account.orElseThrow();
+        return issueToken(user.staff(), user.username());
+    }
+
+    public LoginResponse issueToken(com.frontline.model.Staff staff, String subject) {
         Instant issuedAt = Instant.now();
         var claims = JwtClaimsSet.builder().issuer(SecurityConfiguration.ISSUER)
-                .subject(user.username()).issuedAt(issuedAt).expiresAt(issuedAt.plus(TOKEN_LIFETIME))
-                .claim("staffId", user.staff().id())
-                .claim("role", user.staff().role().name())
-                .claim("displayName", user.staff().displayName()).build();
+                .subject(subject).issuedAt(issuedAt).expiresAt(issuedAt.plus(TOKEN_LIFETIME))
+                .claim("staffId", staff.id())
+                .claim("role", staff.role().name())
+                .claim("displayName", staff.displayName()).build();
         String token = tokens.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
         return new LoginResponse(token, "Bearer", TOKEN_LIFETIME.toSeconds(),
-                user.staff().id(), user.staff().role().name(), user.staff().displayName());
+                staff.id(), staff.role().name(), staff.displayName());
     }
 
     public record LoginRequest(@NotBlank @Size(max = 100) String username,

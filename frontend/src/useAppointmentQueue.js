@@ -1,3 +1,4 @@
+import { useServerNow } from './ServerTime.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api.js';
 import { calendarDate } from './time.js';
@@ -10,7 +11,7 @@ export default function useAppointmentQueue({ includeCoverage = false } = {}) {
   const [refresh, setRefresh] = useState(0);
   const [pendingId, setPendingId] = useState(null);
   const [needsRefresh, setNeedsRefresh] = useState(true);
-  const [now, setNow] = useState(Date.now());
+  const now = useServerNow();
   const submitting = useRef(false);
   const revision = useRef(0);
   const today = calendarDate(now);
@@ -48,10 +49,6 @@ export default function useAppointmentQueue({ includeCoverage = false } = {}) {
     return () => { active = false; controller.abort(); clearTimeout(timer); };
   }, [refresh, includeCoverage, today]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   async function save(id, path, options, successMessage) {
     if (submitting.current || needsRefresh) return false;

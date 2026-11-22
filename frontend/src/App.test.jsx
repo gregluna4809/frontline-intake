@@ -7,7 +7,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
 
-beforeEach(() => { saveAuth({ token: 'test-manager-token', staffId: 9, role: 'CENTER_MANAGER', displayName: 'Demo Manager' }); });
+beforeEach(() => { window.history.replaceState({}, '', '/kiosk'); saveAuth({ token: 'test-manager-token', staffId: 9, role: 'CENTER_MANAGER', displayName: 'Demo Manager' }); });
 afterEach(() => { sessionStorage.clear();
   cleanup();
   vi.unstubAllGlobals();

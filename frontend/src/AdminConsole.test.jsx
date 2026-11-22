@@ -24,6 +24,7 @@ function fixture() {
     holidays: [{ id: 1, date: '2026-09-07', label: 'Labor Day' }, { id: 2, date: '2026-12-25', label: 'Christmas Day' }],
   };
   const fetchMock = vi.fn(async (path, options = {}) => {
+    if (path === '/api/sandbox/state') return { ok: false, status: 404, json: async () => null };
     const method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body) : null;
     if (path === '/api/admin/staff' && method === 'GET') return ok(state.staff);
@@ -78,7 +79,7 @@ test('staff console adds, edits, and deactivates staff without deleting rows', a
   await screen.findByRole('button', { name: 'Reactivate Demo Updated' });
   expect(state.staff.find(person => person.id === 4)).toMatchObject({ displayName: 'Demo Updated', role: 'LSR', active: false });
   expect(fetchMock.mock.calls.some(([, options]) => options.method === 'DELETE')).toBe(false);
-  expect(fetchMock.mock.calls.every(([path, options]) => path.startsWith('/api/admin/') && options.headers.Authorization === 'Bearer admin-test-token')).toBe(true);
+  expect(fetchMock.mock.calls.every(([path, options]) => path === '/api/sandbox/state' || (path.startsWith('/api/admin/') && options.headers.Authorization === 'Bearer admin-test-token'))).toBe(true);
   expect(screen.queryByText(/Career center is closed/)).toBeNull();
 });
 

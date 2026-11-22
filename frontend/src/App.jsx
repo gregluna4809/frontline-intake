@@ -13,6 +13,8 @@ import SimulatorControl from './SimulatorControl.jsx';
 import useBusinessView from './useBusinessView.js';
 import SnapshotView from './SnapshotView.jsx';
 import useVisitReasons from './useVisitReasons.js';
+import ForkPage, { SandboxBanner, useSandboxMode } from './Sandbox.jsx';
+import { ServerTime } from './ServerTime.jsx';
 
 function Kiosk({ businessDate }) {
   const activeReasons = useVisitReasons(businessDate);
@@ -116,7 +118,9 @@ function BusinessScreen({ screen, auth, staffId }) {
     'my-queue': <MyQueue key={staffId} staffId={staffId} manager={manager} onStaffChange={chooseStaff} />,
     'resource-room': <ResourceRoom businessDate={business.status?.currentBusinessDate} />,
   };
-  return <>
+  const sandboxState = useSandboxMode(Boolean(business.status?.sandbox));
+  return <ServerTime.Provider value={business.status}>
+    <SandboxBanner state={sandboxState} status={business.status} />
     {business.status?.isOpen === false && <div className="closed-banner" role="status">
       Career center is closed — showing {business.status.lastCompletedBusinessDate}'s final activity
     </div>}
@@ -131,7 +135,7 @@ function BusinessScreen({ screen, auth, staffId }) {
           <SnapshotView snapshot={business.snapshot} role={screen} staffId={staffId} />
         </> : <p>Loading final activity...</p>}
     </main>
-  </>;
+  </ServerTime.Provider>;
 }
 
 export default function App() {
@@ -143,11 +147,15 @@ export default function App() {
     return () => window.removeEventListener('popstate', syncLocation);
   }, []);
   const url = new URL(location, window.location.origin);
-  const kiosk = url.pathname === '/' || url.pathname === '/kiosk';
+  const landing = url.pathname === '/';
+  const kiosk = url.pathname === '/kiosk';
   const login = url.pathname === '/login';
   const allowed = auth && rolePaths[auth.role].includes(url.pathname);
   let redirect = null;
-  if (!kiosk) {
+  const outsideBusiness = landing || login || url.pathname === '/admin';
+  const sandboxState = useSandboxMode(outsideBusiness);
+  const publicBusiness = useBusinessView(false, landing || (outsideBusiness && Boolean(sandboxState?.enabled)));
+  if (!kiosk && !landing) {
     if (!auth && !login) redirect = '/login';
     else if (auth && (login || !allowed)) redirect = landingPage(auth.role);
     else if (auth?.role === 'LSR' && url.pathname === '/my-queue' && url.searchParams.has('staff')) redirect = '/my-queue';
@@ -158,9 +166,11 @@ export default function App() {
 
   return <>
     <div className="demo-banner">Synthetic demo — no real data</div>
+    {outsideBusiness && <SandboxBanner state={sandboxState} status={publicBusiness.status} />}
     <StaffNavigation auth={auth} path={url.pathname} kiosk={kiosk} />
     {redirect ? <main><p>Opening your workspace...</p></main> :
-      login ? <main><Login expired={url.searchParams.get('expired') === '1'} /></main> :
+      landing ? <ForkPage status={publicBusiness.status} state={sandboxState} /> :
+      login ? <main><Login sandbox={Boolean(sandboxState?.enabled)} expired={url.searchParams.get('expired') === '1'} /></main> :
       screen === 'admin' ? <AdminConsole /> :
       (kiosk || allowed) && <BusinessScreen key={kiosk ? 'kiosk' : auth.token} screen={screen}
         auth={kiosk ? null : auth} staffId={staffId} />}

@@ -1,3 +1,4 @@
+import { useServerNow } from './ServerTime.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api.js';
 import { waitingTime } from './time.js';
@@ -16,7 +17,7 @@ export default function ResourceRoom({ businessDate }) {
   const [pending, setPending] = useState(null);
   const [needsRefresh, setNeedsRefresh] = useState(true);
   const [refresh, setRefresh] = useState(0);
-  const [now, setNow] = useState(Date.now());
+  const now = useServerNow();
   const submitting = useRef(false);
   const revision = useRef(0);
 
@@ -36,7 +37,6 @@ export default function ResourceRoom({ businessDate }) {
           setSnapshot({ resources, waiting, helpRequests });
           setQueueError('');
           setNeedsRefresh(false);
-          setNow(Date.now());
         }
       } catch (failure) {
         if (active && currentRevision === revision.current) {
@@ -51,10 +51,6 @@ export default function ResourceRoom({ businessDate }) {
     return () => { active = false; controller.abort(); clearTimeout(timer); };
   }, [refresh, businessDate]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   async function mutate(visit, action, body) {
     if (submitting.current || needsRefresh) return;

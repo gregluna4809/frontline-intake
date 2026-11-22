@@ -1,8 +1,9 @@
+import { SandboxRoles } from './Sandbox.jsx';
 import { useRef, useState } from 'react';
 import { request } from './api.js';
 import { landingPage, navigate, saveAuth, SESSION_EXPIRED } from './auth.js';
 
-export default function Login({ expired }) {
+export default function Login({ expired, sandbox }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
@@ -25,6 +26,8 @@ export default function Login({ expired }) {
       submitting.current = false; setPending(false);
     }
   }
+
+  if (sandbox) return <section className="login-panel"><h1>Log in to Frontline Sandbox</h1><SandboxRoles /></section>;
 
   return <section className="login-panel">
     <span className="eyebrow">Career Center staff</span>

@@ -142,6 +142,7 @@ test.each([true, false])('login and admin remain functional without consulting b
   sessionStorage.clear();
   window.history.replaceState({}, '', '/login');
   const fetchMock = vi.fn(async path => {
+    if (path === '/api/sandbox/state') return { ok: false, status: 404, json: async () => null };
     if (path === '/api/business-status') return ok({ ...closed, isOpen });
     if (path === '/api/admin/staff') return ok([]);
     if (path === '/api/auth/login') return ok({ token: 'admin-token', staffId: 10, role: 'ADMINISTRATOR', displayName: 'Demo Administrator' });
@@ -158,5 +159,5 @@ test.each([true, false])('login and admin remain functional without consulting b
   expect(screen.getByText('Demo Administrator')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy();
   expect(screen.queryByText(/Career center is closed/)).toBeNull();
-  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/auth/login', '/api/admin/staff']);
+  expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/sandbox/state', '/api/auth/login', '/api/admin/staff']);
 });

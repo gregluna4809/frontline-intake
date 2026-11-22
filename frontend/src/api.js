@@ -3,9 +3,9 @@ import { clearAuth, expireSession, getAuth, SESSION_EXPIRED } from './auth.js';
 export async function request(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const pathname = new URL(path, window.location.origin).pathname;
-  const login = pathname === '/api/auth/login' && method === 'POST';
+  const login = ['/api/auth/login', '/api/sandbox/login'].includes(pathname) && method === 'POST';
   const publicRequest = login || (method === 'POST' && pathname === '/api/visits') ||
-    (method === 'GET' && ['/api/business-status', '/api/snapshot', '/api/visit-reasons'].includes(pathname));
+    (method === 'GET' && ['/api/sandbox/state', '/api/business-status', '/api/snapshot', '/api/visit-reasons'].includes(pathname));
   const requestToken = getAuth()?.token || null;
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (!publicRequest && requestToken) headers.Authorization = 'Bearer ' + requestToken;

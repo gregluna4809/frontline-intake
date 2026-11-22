@@ -104,6 +104,7 @@ public class SecurityConfiguration {
                         .accessDeniedHandler(forbidden))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.GET, "/api/sandbox/state").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/sandbox/login").permitAll()
                         .requestMatchers("/api/sandbox/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/visits", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/business-status", "/api/snapshot", "/api/visit-reasons").permitAll()

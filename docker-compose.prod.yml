@@ -27,6 +27,9 @@ services:
     environment:
       DB_URL: jdbc:postgresql://frontline-db:5432/${DB_NAME:-frontline}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SANDBOX_MODE: ${SANDBOX_MODE:-false}
+      SANDBOX_URL: ${SANDBOX_URL:-}
+      LIVE_URL: ${LIVE_URL:-}
       DB_USER: ${DB_USER:?Set DB_USER in .env}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     depends_on:

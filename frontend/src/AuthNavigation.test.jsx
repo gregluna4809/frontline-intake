@@ -65,7 +65,7 @@ test.each(cases)('%s logs in, stores direct response fields, and sees only permi
 });
 
 test('invalid credentials show an error without leaving login or storing authentication', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, json: async () => ({ detail: 'Invalid username or password.' }) })));
+  vi.stubGlobal('fetch', vi.fn(async path => path === '/api/sandbox/state' ? { ok: false, status: 404, json: async () => null } : ({ ok: false, status: 401, json: async () => ({ detail: 'Invalid username or password.' }) })));
   render(<App />);
   await submitLogin();
   expect((await screen.findByRole('alert')).textContent).toBe('Invalid username or password.');
