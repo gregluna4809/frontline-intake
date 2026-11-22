@@ -90,7 +90,7 @@ class SandboxApiTest {
         assertThat(count("SELECT count(*) FROM visit WHERE id = "+old.id())).isZero();
         assertThat(count("SELECT count(*) FROM customer WHERE id = "+customer)).isZero();
         assertThat(count("SELECT count(*) FROM customer WHERE display_name LIKE 'Demo Customer %'")).isEqualTo(50);
-        assertThat(count("SELECT count(*) FROM staff")).isEqualTo(10);
+        assertThat(count("SELECT count(*) FROM staff")).isEqualTo(21);
         assertThat(count("SELECT count(*) FROM resource")).isEqualTo(51);
         assertThat(count("SELECT count(*) FROM visit WHERE business_date <> DATE '2026-11-30'")).isZero();
         assertThat(count("SELECT count(*) FROM visit WHERE reason = 'PHONE_ACCESS'")).isZero();

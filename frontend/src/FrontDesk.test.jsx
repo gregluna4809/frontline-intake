@@ -222,3 +222,37 @@ test('resuming an identified visit shows FTR history and reload removes a report
   await waitFor(() => expect(screen.queryByText('Customer has a missed appointment (FTR).')).toBeNull());
   expect(screen.getByRole('button', { name: 'Route' }).disabled).toBe(false);
 });
+
+test('New customer creates and selects the customer using the current visit ETag', async () => {
+  let detail = initialDetail();
+  const created = { id: 57, displayName: 'New Example', language: 'ES', veteran: true };
+  const fetchMock = vi.fn(async path => {
+    if (path.startsWith('/api/visits?status=')) {
+      return ok(detail.visit.status === path.split('=')[1] ? [detail.visit] : []);
+    }
+    if (path === '/api/visits/1') return ok(detail);
+    if (path === '/api/customers') return ok(created);
+    if (path === '/api/visits/1/identify') {
+      detail = { ...detail, customer: created, visit: { ...detail.visit, customerId: 57, status: 'IDENTIFIED', version: 1 } };
+      return ok(detail);
+    }
+    throw new Error('Unexpected request ' + path);
+  });
+  stubFetch(fetchMock);
+  render(<FrontDesk />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'B0001' }));
+  await user.click(await screen.findByText('New customer'));
+  await user.type(screen.getByRole('textbox', { name: 'Name' }), 'New Example');
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'ES');
+  await user.click(screen.getByRole('checkbox', { name: 'Veteran' }));
+  await user.click(screen.getByRole('button', { name: 'Create and select' }));
+  expect(await screen.findByText('New Example')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Route' }).disabled).toBe(false);
+  expect(fetchMock).toHaveBeenCalledWith('/api/customers', expect.objectContaining({
+    method: 'POST', body: '{"displayName":"New Example","language":"ES","veteran":true}',
+  }));
+  expect(fetchMock).toHaveBeenCalledWith('/api/visits/1/identify', expect.objectContaining({
+    method: 'POST', body: '{"customerId":57}', headers: expect.objectContaining({ 'If-Match': '"0"' }),
+  }));
+});

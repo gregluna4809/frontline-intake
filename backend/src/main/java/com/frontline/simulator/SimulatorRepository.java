@@ -103,7 +103,7 @@ public class SimulatorRepository {
         return jdbc.sql("""
                 SELECT s.id FROM staff s JOIN staff_rotation r ON r.staff_id = s.id AND r.day_of_week = :weekday
                 LEFT JOIN call_out c ON c.staff_id = s.id AND c.date = :date
-                WHERE s.active AND s.role = 'LSR'
+                WHERE s.active AND s.role = 'LSR' AND s.display_name NOT LIKE 'Bot %'
                   AND (CASE WHEN c.id IS NOT NULL THEN 'RESOURCE_ROOM' ELSE r.duty_type END) = :duty
                   AND NOT EXISTS (SELECT 1 FROM sim_task t WHERE t.staff_id = s.id
                     AND t.action IN ('FINISH_HELP', 'CLOSE_APPOINTMENT') AND t.done_at IS NULL)
@@ -111,11 +111,11 @@ public class SimulatorRepository {
                 """).param("date", date).param("weekday", date.getDayOfWeek().getValue()).param("duty", duty).query(Long.class).optional();
     }
     public boolean activeLsr(long staff) {
-        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM staff WHERE id = :id AND active AND role = 'LSR')")
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM staff WHERE id = :id AND active AND role = 'LSR' AND display_name NOT LIKE 'Bot %')")
                 .param("id", staff).query(Boolean.class).single();
     }
     public Optional<Long> clerk() {
-        return jdbc.sql("SELECT id FROM staff WHERE active AND role = 'CLERK' ORDER BY id LIMIT 1").query(Long.class).optional();
+        return jdbc.sql("SELECT id FROM staff WHERE active AND role = 'CLERK' AND display_name NOT LIKE 'Bot %' ORDER BY id LIMIT 1").query(Long.class).optional();
     }
     public long openHelp(LocalDate date) {
         return jdbc.sql("SELECT count(*) FROM help_request WHERE business_date = :date AND closed_at IS NULL")

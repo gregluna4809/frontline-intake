@@ -17,12 +17,12 @@ public class StaffRepository {
     }
 
     public List<Staff> findAll() {
-        return jdbc.sql("SELECT * FROM staff ORDER BY role, display_name, id")
+        return jdbc.sql("SELECT * FROM staff ORDER BY (display_name LIKE 'Bot %'), role, display_name, id")
                 .query(this::mapStaff).list();
     }
 
     public List<Staff> findActive() {
-        return jdbc.sql("SELECT * FROM staff WHERE active ORDER BY role, display_name, id")
+        return jdbc.sql("SELECT * FROM staff WHERE active ORDER BY (display_name LIKE 'Bot %'), role, display_name, id")
                 .query(this::mapStaff).list();
     }
 

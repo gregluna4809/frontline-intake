@@ -28,7 +28,7 @@ public class CoverageRepository {
                 JOIN staff_rotation r ON r.staff_id = s.id AND r.day_of_week = :dayOfWeek
                 LEFT JOIN call_out c ON c.staff_id = s.id AND c.date = :date
                 WHERE s.role = 'LSR' AND s.active
-                ORDER BY s.display_name, s.id
+                ORDER BY (s.display_name LIKE 'Bot %'), s.display_name, s.id
                 """)
                 .param("dayOfWeek", date.getDayOfWeek().getValue())
                 .param("date", date)

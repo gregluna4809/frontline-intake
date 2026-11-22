@@ -27,6 +27,7 @@ function VisitPanel({ visitId, onChanged, reasons }) {
   const [customers, setCustomers] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [customerError, setCustomerError] = useState('');
   const submitting = useRef(false);
 
   useEffect(() => {
@@ -67,12 +68,33 @@ function VisitPanel({ visitId, onChanged, reasons }) {
     return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, [query, canIdentify]);
 
-  async function mutate(action, body) {
+  function createCustomer(event) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    const displayName = fields.get('displayName').trim();
+    if (!displayName) {
+      setCustomerError('Enter a customer name.');
+      return;
+    }
+    mutate('identify', null, { displayName, language: fields.get('language'), veteran: fields.has('veteran') });
+  }
+
+  async function mutate(action, body, newCustomer) {
     if (submitting.current || needsReload) return;
     submitting.current = true;
     setPending(true);
     setError('');
     try {
+      if (newCustomer) {
+        setCustomerError('');
+        try {
+          const customer = await request('/api/customers', { method: 'POST', body: JSON.stringify(newCustomer) });
+          body = { customerId: customer.id };
+        } catch (failure) {
+          setCustomerError(failure.message);
+          return;
+        }
+      }
       const data = await request('/api/visits/' + visitId + '/' + action, {
         method: 'POST',
         headers: { 'If-Match': '"' + detail.visit.version + '"' },
@@ -133,6 +155,24 @@ function VisitPanel({ visitId, onChanged, reasons }) {
                     </li>
                   ))}
                 </ul>
+              )}
+              {detail.visit.status === 'CHECKED_IN' && (
+                <details>
+                  <summary>New customer</summary>
+                  <form onSubmit={createCustomer}>
+                    <fieldset disabled={!canIdentify}>
+                      <label>Name<input name="displayName" required maxLength={100} /></label>
+                      <label>Language<select name="language" defaultValue="EN">
+                        <option value="EN">English</option>
+                        <option value="ES">Spanish</option>
+                        <option value="OTHER">Other</option>
+                      </select></label>
+                      <label><input type="checkbox" name="veteran" /> Veteran</label>
+                      <button type="submit">Create and select</button>
+                    </fieldset>
+                    {customerError && <p role="alert" className="error">{customerError}</p>}
+                  </form>
+                </details>
               )}
             </div>
           )}

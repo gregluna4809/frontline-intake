@@ -72,6 +72,7 @@ public class BusinessDayService {
             // Preserve closing snapshots first, then detect FTR before resources/tickets reset.
             visits.closeMissedAppointments(date);
             sessions.rollover();
+            if (calendar.alwaysOpen()) resetTicketSequences();
             jdbc.sql("UPDATE resource SET status = 'FREE', active_visit_id = NULL").update();
         }
     }
@@ -90,6 +91,11 @@ public class BusinessDayService {
                 .param("date", date).query(String.class).single();
         try { return mapper.readTree(json); }
         catch (JsonProcessingException exception) { throw new IllegalStateException("Cannot read snapshot.", exception); }
+    }
+
+    void resetTicketSequences() {
+        jdbc.sql("ALTER SEQUENCE visit_ticket_sequence RESTART WITH 1").update();
+        jdbc.sql("ALTER SEQUENCE appointment_ticket_sequence RESTART WITH 1").update();
     }
 
     private void capture(LocalDate date) {

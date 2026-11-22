@@ -20,7 +20,8 @@ public class BusinessConfiguration {
     }
 
     @Bean
-    public BusinessCalendar businessCalendar(Clock businessClock, HolidayRepository holidays) {
-        return new BusinessCalendar(businessClock, holidays::dates);
+    public BusinessCalendar businessCalendar(Clock businessClock, HolidayRepository holidays,
+            @org.springframework.beans.factory.annotation.Value("${frontline.calendar.always-open:false}") boolean alwaysOpen) {
+        return new BusinessCalendar(businessClock, holidays::dates, alwaysOpen);
     }
 }

@@ -58,18 +58,18 @@ class CoverageApiTest {
 
     @Test
     void rotationSeedsEveryDayAndStaggersOneResourceRoomDayPerLsr() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff_rotation", Integer.class)).isEqualTo(28);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff_rotation", Integer.class)).isEqualTo(84);
         for (int day = 0; day < 7; day++) {
             LocalDate date = nextMonday().plusDays(day);
             var rotation = coverage.rotation(date);
-            assertThat(rotation).hasSize(4);
+            assertThat(rotation).hasSize(12);
             for (int index = 0; index < 4; index++) {
                 assertThat(rotation.get(index).dutyType()).isEqualTo(day == index
                         ? StaffDuty.DutyType.RESOURCE_ROOM : StaffDuty.DutyType.APPOINTMENTS);
             }
         }
         mvc.perform(get("/api/rotation").param("date", nextMonday().toString()))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(4))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(12))
                 .andExpect(jsonPath("$[0].staffId").value(1))
                 .andExpect(jsonPath("$[0].displayName").value("Demo Staff 001"))
                 .andExpect(jsonPath("$[0].dutyType").value("RESOURCE_ROOM"))

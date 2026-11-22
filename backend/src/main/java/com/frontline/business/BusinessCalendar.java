@@ -14,15 +14,21 @@ public class BusinessCalendar {
     private static final LocalTime CLOSING = LocalTime.of(16, 45);
 
     private final Clock clock;
+    private final boolean alwaysOpen;
     private final java.util.function.Supplier<Set<LocalDate>> holidays;
 
     public BusinessCalendar(Clock clock, java.util.function.Supplier<Set<LocalDate>> holidays) {
+        this(clock, holidays, false);
+    }
+
+    public BusinessCalendar(Clock clock, java.util.function.Supplier<Set<LocalDate>> holidays, boolean alwaysOpen) {
         this.clock = clock;
+        this.alwaysOpen = alwaysOpen;
         this.holidays = holidays;
     }
 
     public boolean isBusinessDay(LocalDate date) {
-        return isBusinessDay(date, holidays.get());
+        return alwaysOpen || isBusinessDay(date, holidays.get());
     }
 
     private boolean isBusinessDay(LocalDate date, Set<LocalDate> dates) {
@@ -30,6 +36,7 @@ public class BusinessCalendar {
                 && !dates.contains(date);
     }
 
+    public boolean alwaysOpen() { return alwaysOpen; }
     public boolean isOpenNow() { return status().isOpen(); }
     public LocalDate currentBusinessDate() { return status().currentBusinessDate(); }
     public LocalDate lastCompletedBusinessDate() { return status().lastCompletedBusinessDate(); }
@@ -38,6 +45,7 @@ public class BusinessCalendar {
     public BusinessStatus status() {
         var now = clock.instant().atZone(ZONE);
         LocalDate date = now.toLocalDate();
+        if (alwaysOpen) return new BusinessStatus(true, date, date.minusDays(1));
         LocalTime time = now.toLocalTime();
         Set<LocalDate> dates = holidays.get();
         boolean businessDay = isBusinessDay(date, dates);

@@ -139,8 +139,8 @@ class AuthApiTest {
                     count(*) FILTER (WHERE role = 'CLERK') AS clerk,
                     count(*) FILTER (WHERE role = 'CENTER_MANAGER') AS manager,
                     count(*) FILTER (WHERE role = 'ADMINISTRATOR') AS administrator FROM staff
-                """)).containsExactlyInAnyOrderEntriesOf(Map.of("lsr", 4L, "supervisor", 1L, "clerk", 3L, "manager", 1L, "administrator", 1L));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff s WHERE (SELECT count(*) FROM user_account u WHERE u.staff_id = s.id) <> 1", Integer.class)).isZero();
+                """)).containsExactlyInAnyOrderEntriesOf(Map.of("lsr", 12L, "supervisor", 2L, "clerk", 5L, "manager", 1L, "administrator", 1L));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff s WHERE (SELECT count(*) FROM user_account u WHERE u.staff_id = s.id) <> 1", Integer.class)).isEqualTo(11);
         for (String hash : jdbc.queryForList("SELECT password_hash FROM user_account", String.class)) {
             assertThat(hash).startsWith("$2a$10$");
             assertThat(passwords.matches("demo1234", hash)).isTrue();
@@ -162,9 +162,9 @@ class AuthApiTest {
                 .schemas(schema).defaultSchema(schema).load();
         upgrade.migrate();
         assertThat(upgrade.migrate().migrationsExecuted).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_upgrade.staff", Integer.class)).isEqualTo(11);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_upgrade.staff", Integer.class)).isEqualTo(22);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_upgrade.user_account", Integer.class)).isEqualTo(11);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_upgrade.staff s WHERE (SELECT count(*) FROM auth_upgrade.user_account u WHERE u.staff_id = s.id) <> 1", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_upgrade.staff s WHERE (SELECT count(*) FROM auth_upgrade.user_account u WHERE u.staff_id = s.id) <> 1", Integer.class)).isEqualTo(11);
         assertThat(jdbc.queryForObject("SELECT username FROM auth_upgrade.user_account u JOIN auth_upgrade.staff s ON s.id = u.staff_id WHERE s.display_name = 'Demo Extra Staff'", String.class))
                 .isEqualTo("staff6");
     }

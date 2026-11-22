@@ -17,7 +17,7 @@ public class AdminRepository {
     public List<StaffAccount> staff() {
         return jdbc.sql("""
                 SELECT s.*, u.id AS account_id, u.username FROM staff s
-                LEFT JOIN user_account u ON u.staff_id = s.id ORDER BY s.display_name, s.id
+                LEFT JOIN user_account u ON u.staff_id = s.id ORDER BY (s.display_name LIKE 'Bot %'), s.display_name, s.id
                 """).query((rs, row) -> new StaffAccount(rs.getLong("id"), rs.getString("display_name"),
                         Staff.Role.valueOf(rs.getString("role")), rs.getBoolean("active"),
                         rs.getObject("account_id", Long.class), rs.getString("username"))).list();
@@ -57,7 +57,7 @@ public class AdminRepository {
         return jdbc.sql("""
                 SELECT s.id, s.display_name, r.day_of_week, r.duty_type
                 FROM staff s JOIN staff_rotation r ON r.staff_id = s.id
-                WHERE s.active AND s.role = 'LSR' ORDER BY s.display_name, s.id, r.day_of_week
+                WHERE s.active AND s.role = 'LSR' ORDER BY (s.display_name LIKE 'Bot %'), s.display_name, s.id, r.day_of_week
                 """).query((rs, row) -> new RotationRow(rs.getLong("id"), rs.getString("display_name"),
                         rs.getInt("day_of_week"), DutyType.valueOf(rs.getString("duty_type")))).list();
     }

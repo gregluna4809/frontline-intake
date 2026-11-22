@@ -40,7 +40,7 @@ public class SandboxService {
         return new StateResponse(true,clock.instant(),value.speed(),value.scenario(),value.warming(),value.dayStartedAt());
     }
     public void reconcile() {
-        if (!properties.enabled() || state.state().warming()) return;
+        if (!properties.enabled() || simulator.javaEngineDisabled() || state.state().warming()) return;
         synchronized (simulator) {
             var current = state.state();
             if (current.warming()) return;
@@ -77,6 +77,7 @@ public class SandboxService {
     }
     private DayResponse start(DayInput input, boolean bypassRateLimit, LocalDate nextAfter) {
         requireEnabled();
+        simulator.requireJavaEngine();
         if (input == null || input.mode() == null) throw bad("Choose NEXT, RANDOM or DATE.");
         LocalTime time = input.time() == null ? properties.autoStartTime() : input.time();
         int speed = input.speed() == null ? 5 : input.speed();

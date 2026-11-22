@@ -22,11 +22,12 @@ public class TicketSequenceService {
         days.resetResourcesForOpening();
         lockSequences();
         LocalDate date = calendar.currentBusinessDate();
+        if (calendar.alwaysOpen()) return date;
         // Catch up after downtime and cover arrivals racing the opening cron.
         // With no earlier visits, leave the initial sequence configuration intact.
         if (!hasVisits(date) && jdbc.sql("SELECT EXISTS (SELECT 1 FROM visit WHERE business_date < :date)")
                 .param("date", date).query(Boolean.class).single()) {
-            resetSequences();
+            days.resetTicketSequences();
         }
         return date;
     }
@@ -34,10 +35,11 @@ public class TicketSequenceService {
     @Transactional
     public void resetForOpening() {
         days.resetResourcesForOpening();
+        if (calendar.alwaysOpen()) return;
         lockSequences();
         var status = calendar.status();
         // Never rewind numbers that have already been issued for this business day.
-        if (status.isOpen() && !hasVisits(status.currentBusinessDate())) resetSequences();
+        if (status.isOpen() && !hasVisits(status.currentBusinessDate())) days.resetTicketSequences();
     }
 
     private boolean hasVisits(LocalDate date) {
@@ -50,8 +52,4 @@ public class TicketSequenceService {
         jdbc.sql("SELECT pg_advisory_xact_lock(74008001)").query((rs, row) -> 1).single();
     }
 
-    private void resetSequences() {
-        jdbc.sql("ALTER SEQUENCE visit_ticket_sequence RESTART WITH 1").update();
-        jdbc.sql("ALTER SEQUENCE appointment_ticket_sequence RESTART WITH 1").update();
-    }
 }

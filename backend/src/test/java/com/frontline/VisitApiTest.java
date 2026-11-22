@@ -737,11 +737,11 @@ class VisitApiTest {
     }
     @Test
     void staffMigrationSeedsRolesAndEndpointListsInOrder() throws Exception {
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff", Integer.class)).isEqualTo(10);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'LSR'", Integer.class)).isEqualTo(4);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'SUPERVISING_LSR'", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff", Integer.class)).isEqualTo(21);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'LSR'", Integer.class)).isEqualTo(12);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff WHERE role = 'SUPERVISING_LSR'", Integer.class)).isEqualTo(2);
         mvc.perform(get("/api/staff")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(10))
+                .andExpect(jsonPath("$.length()").value(21))
                 .andExpect(jsonPath("$[5].displayName").value("Demo Staff 001"))
                 .andExpect(jsonPath("$[8].displayName").value("Demo Staff 004"))
                 .andExpect(jsonPath("$[9].role").value("SUPERVISING_LSR"))
@@ -825,7 +825,7 @@ class VisitApiTest {
         if (alreadyAssigned) service.assignStaff(visit.id(), 1, visit.version());
         var before = service.detail(visit.id());
         Long supervisorId = jdbc.queryForObject(
-                "SELECT id FROM staff WHERE role = 'SUPERVISING_LSR'", Long.class);
+                "SELECT id FROM staff WHERE role = 'SUPERVISING_LSR' AND display_name = 'Demo Supervisor 001'", Long.class);
 
         mvc.perform(post("/api/visits/{id}/assign-staff", visit.id())
                         .header("If-Match", "\"" + before.visit().version() + "\"")
@@ -1034,7 +1034,7 @@ class VisitApiTest {
                 .isEqualTo("SCHEDULED");
         assertThat(jdbc.queryForObject("SELECT appointment_type FROM step5_upgrade.visit WHERE ticket = 'B0001'", String.class))
                 .isNull();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM step5_upgrade.staff", Integer.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM step5_upgrade.staff", Integer.class)).isEqualTo(21);
     }
 
     @Test

@@ -9,7 +9,11 @@ import com.frontline.simulator.SimulatorProperties.Scenario;
 @ConditionalOnProperty(name = "frontline.sandbox.enabled", havingValue = "true")
 public class SandboxNightlyReset {
     private final SandboxService service;
-    public SandboxNightlyReset(SandboxService service) { this.service = service; }
+    private final com.frontline.simulator.TrafficSimulator simulator;
+    public SandboxNightlyReset(SandboxService service, com.frontline.simulator.TrafficSimulator simulator) {
+        this.service = service;
+        this.simulator = simulator;
+    }
     @Scheduled(cron = "0 0 3 * * *", zone = "America/New_York")
-    public void reset() { service.start(new SandboxService.DayInput(SandboxService.Mode.NEXT,null,null,5,Scenario.SHIFT_TO_ONLINE),true); }
+    public void reset() { if (!simulator.javaEngineDisabled()) service.start(new SandboxService.DayInput(SandboxService.Mode.NEXT,null,null,5,Scenario.SHIFT_TO_ONLINE),true); }
 }

@@ -265,7 +265,7 @@ class BusinessApiTest {
                 .andExpect(jsonPath("$.visits[1].status").value("CLOSED"))
                 .andExpect(jsonPath("$.resources[?(@.label == 'Phone 01')].status")
                         .value(org.hamcrest.Matchers.contains("OCCUPIED")))
-                .andExpect(jsonPath("$.staff.length()").value(10))
+                .andExpect(jsonPath("$.staff.length()").value(21))
                 .andExpect(jsonPath("$.coverage[?(@.staffId == 2)].dutyType")
                         .value(org.hamcrest.Matchers.contains("RESOURCE_ROOM")))
                 .andExpect(jsonPath("$.callOuts[0].reason").value("Synthetic coverage note"))
