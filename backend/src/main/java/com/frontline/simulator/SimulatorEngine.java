@@ -15,9 +15,13 @@ public class SimulatorEngine {
     private final SimulatorProperties settings;
     private final SimulatorWork work;
     private final VisitService visits;
-    public SimulatorEngine(SimulatorRepository repository, SimulatorProperties settings, SimulatorWork work, VisitService visits) {
+    private final com.frontline.sandbox.SandboxContext sandbox;
+    public SimulatorEngine(SimulatorRepository repository, SimulatorProperties settings, SimulatorWork work, VisitService visits, com.frontline.sandbox.SandboxContext sandbox) {
         this.repository = repository; this.settings = settings; this.work = work; this.visits = visits;
+        this.sandbox = sandbox;
     }
+    public boolean warming() { return sandbox.warming(); }
+    public SimulatorProperties.Scenario scenario() { return sandbox.scenario(settings.scenario()); }
     public int tick(LocalDate date, Instant now) {
         var day = repository.day(date).orElseGet(() -> {
             long seed = new Random().nextLong();

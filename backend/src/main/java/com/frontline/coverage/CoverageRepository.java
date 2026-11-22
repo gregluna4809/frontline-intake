@@ -13,9 +13,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class CoverageRepository {
     private final JdbcClient jdbc;
+    private final java.time.Clock clock;
 
-    public CoverageRepository(JdbcClient jdbc) {
+    public CoverageRepository(JdbcClient jdbc, java.time.Clock businessClock) {
         this.jdbc = jdbc;
+        this.clock = businessClock;
     }
 
     public List<StaffDuty> rotation(LocalDate date) {
@@ -37,12 +39,12 @@ public class CoverageRepository {
 
     public CallOut upsert(long staffId, LocalDate date, String reason) {
         return jdbc.sql("""
-                INSERT INTO call_out (staff_id, date, reason)
-                VALUES (:staffId, :date, :reason)
+                INSERT INTO call_out (staff_id, date, reason, created_at)
+                VALUES (:staffId, :date, :reason, :businessNow)
                 ON CONFLICT (staff_id, date) DO UPDATE SET reason = EXCLUDED.reason
                 RETURNING *
                 """)
-                .param("staffId", staffId).param("date", date).param("reason", reason, Types.VARCHAR)
+                .param("staffId", staffId).param("date", date).param("reason", reason, Types.VARCHAR).param("businessNow",java.sql.Timestamp.from(clock.instant()))
                 .query(this::mapCallOut).single();
     }
 

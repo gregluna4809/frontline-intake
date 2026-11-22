@@ -20,10 +20,12 @@ public class SimulatorWork {
     private final VisitService visits;
     private final HelpRequestService helpRequests;
     private final HelpRequestRepository helpRepository;
+    private final com.frontline.sandbox.SandboxContext sandbox;
     public SimulatorWork(SimulatorRepository repository, SimulatorProperties settings, VisitService visits,
-                         HelpRequestService helpRequests, HelpRequestRepository helpRepository) {
+                         HelpRequestService helpRequests, HelpRequestRepository helpRepository, com.frontline.sandbox.SandboxContext sandbox) {
         this.repository = repository; this.settings = settings; this.visits = visits;
         this.helpRequests = helpRequests; this.helpRepository = helpRepository;
+        this.sandbox = sandbox;
     }
     public boolean arrive(LocalDate date, int ordinal, Instant now) {
         repository.lock();
@@ -84,7 +86,7 @@ public class SimulatorWork {
                 if (help != null && help.closedAt() == null && Objects.equals(help.claimedByStaffId(), task.staffId())
                         && visit.status() == Visit.Status.AT_RESOURCE
                         && repository.openSession(visit.id()).equals(Optional.ofNullable(task.resourceSessionId()))) {
-                    var outcome = settings.helpOutcomes().draw(visit.reason(), settings.scenario(), taskRandom(task, 37));
+                    var outcome = settings.helpOutcomes().draw(visit.reason(), sandbox.scenario(settings.scenario()), taskRandom(task, 37));
                     helpRequests.close(help.id(), help.version(), task.staffId(), "LSR", outcome, "SIMULATOR");
                     if (outcome == HelpRequest.Outcome.REFERRED_OUT) {
                         repository.schedule(visit.id(), "END_SESSION", now.plusSeconds(settings.referredOutLeaveMinutes().draw(taskRandom(task, 41)) * 60L),

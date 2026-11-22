@@ -79,7 +79,7 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper mapper) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper mapper, com.frontline.sandbox.SandboxProperties sandbox) throws Exception {
         AccessDeniedHandler forbidden = (request, response, exception) -> {
             response.setStatus(HttpStatus.FORBIDDEN.value());
             response.setContentType("application/problem+json");
@@ -92,6 +92,7 @@ public class SecurityConfiguration {
         var converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
         return http
+                .addFilterBefore(new com.frontline.sandbox.SandboxModeFilter(sandbox), org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
                 // Authentication uses an explicit bearer header, never a session cookie.
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -102,6 +103,8 @@ public class SecurityConfiguration {
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
                         .accessDeniedHandler(forbidden))
                 .authorizeHttpRequests(requests -> requests
+                        .requestMatchers(HttpMethod.GET, "/api/sandbox/state").permitAll()
+                        .requestMatchers("/api/sandbox/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/visits", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/business-status", "/api/snapshot", "/api/visit-reasons").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/help-requests")

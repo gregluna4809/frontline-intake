@@ -20,6 +20,12 @@ server:
 auth:
   jwt-secret: ${JWT_SECRET}
 
+frontline:
+  sandbox:
+    enabled: ${SANDBOX_MODE:false}
+    random-from: 2026-11-02
+    random-to: 2026-12-31
+
 simulator:
   enabled: false
   arrivalsPerMinute: 4

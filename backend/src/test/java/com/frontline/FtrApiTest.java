@@ -71,7 +71,7 @@ class FtrApiTest {
                 """, Long.class, "TEST" + (++ticket), type, appointment ? null : "PHONE_ACCESS",
                 appointment ? "MANDATORY" : null, appointment ? "INITIAL" : null,
                 appointmentStatus, status, customerId, date,
-                java.sql.Timestamp.from(Instant.now().minusSeconds(86400)), status);
+                java.sql.Timestamp.from(clock.instant().minusSeconds(86400)), status);
         return visits.detail(id).visit();
     }
 

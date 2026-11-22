@@ -22,6 +22,7 @@ public class BusinessSchedules {
 
     @Scheduled(cron = "0 * * * * *", zone = BusinessCalendar.TIME_ZONE)
     public void reconcileSimulator() {
+        if (simulator.warming()) return;
         days.freezeCompletedDays();
         boolean open = calendar.isOpenNow();
         boolean running = simulator.status().running();
@@ -31,6 +32,7 @@ public class BusinessSchedules {
 
     @Scheduled(cron = "0 30 8 * * MON-FRI", zone = BusinessCalendar.TIME_ZONE)
     public void resetAtOpening() {
+        if (simulator.warming()) return;
         if (calendar.isOpenNow()) tickets.resetForOpening();
     }
 }

@@ -16,9 +16,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class VisitRepository {
     private final JdbcClient jdbc;
+    private final java.time.Clock clock;
 
-    public VisitRepository(JdbcClient jdbc) {
+    public VisitRepository(JdbcClient jdbc, java.time.Clock businessClock) {
         this.jdbc = jdbc;
+        this.clock = businessClock;
     }
 
     public Visit create(Visit.VisitType visitType, Visit.Reason reason, Visit.AppointmentCategory appointmentCategory,
@@ -29,11 +31,11 @@ public class VisitRepository {
                 INSERT INTO visit (ticket, visit_type, reason, appointment_category, appointment_type,
                                    appointment_status, status, created_at, version, business_date)
                 SELECT :prefix || lpad(value::text, greatest(4, length(value::text)), '0'),
-                       :visitType, :reason, :category, NULL, :appointmentStatus, 'CHECKED_IN', CURRENT_TIMESTAMP, 0, :businessDate
+                       :visitType, :reason, :category, NULL, :appointmentStatus, 'CHECKED_IN', :businessNow, 0, :businessDate
                 FROM ticket_number
                 RETURNING *
                 """)
-                .param("businessDate", businessDate)
+                .param("businessDate", businessDate).param("businessNow",Timestamp.from(clock.instant()))
                 .param("sequence", appointment ? "appointment_ticket_sequence" : "visit_ticket_sequence")
                 .param("prefix", appointment ? "A" : "B")
                 .param("visitType", visitType.name())
@@ -51,11 +53,11 @@ public class VisitRepository {
                                    appointment_status, status, customer_id, previous_visit_id, created_at, version, business_date)
                 SELECT 'A' || lpad(value::text, greatest(4, length(value::text)), '0'),
                        'APPOINTMENT', :category, :appointmentType, 'RESCHEDULED', 'WAITING_STAFF',
-                       :customerId, :previousVisitId, CURRENT_TIMESTAMP, 0, :businessDate
+                       :customerId, :previousVisitId, :businessNow, 0, :businessDate
                 FROM ticket_number
                 RETURNING *
                 """)
-                .param("businessDate", businessDate)
+                .param("businessDate", businessDate).param("businessNow",Timestamp.from(clock.instant()))
                 .param("category", previous.appointmentCategory())
                 .param("appointmentType", previous.appointmentType().name())
                 .param("customerId", previous.customerId())
@@ -126,11 +128,11 @@ public class VisitRepository {
                                 AND history.visit_type = 'APPOINTMENT' AND history.id <> :id
                         ) THEN 'FOLLOWUP' ELSE 'INITIAL' END ELSE appointment_type END,
                     version = version + 1,
-                    closed_at = CASE WHEN :next IN ('CLOSED', 'LEFT') THEN CURRENT_TIMESTAMP ELSE closed_at END
+                    closed_at = CASE WHEN :next IN ('CLOSED', 'LEFT') THEN :businessNow ELSE closed_at END
                 WHERE id = :id AND version = :version AND status = :previous
                 RETURNING *
                 """)
-                .param("next", next.name())
+                .param("next", next.name()).param("businessNow",Timestamp.from(clock.instant()))
                 .param("customerId", customerId, Types.BIGINT)
                 .param("resourceId", resourceId, Types.BIGINT)
                 .param("id", previous.id())
@@ -171,9 +173,9 @@ public class VisitRepository {
     public void recordTransition(Visit previous, Visit updated, String note, String actor) {
         jdbc.sql("""
                 INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
-                VALUES (:visitId, :fromStatus, :toStatus, :actor, CURRENT_TIMESTAMP, :note)
+                VALUES (:visitId, :fromStatus, :toStatus, :actor, :businessNow, :note)
                 """)
-                .param("visitId", updated.id())
+                .param("visitId", updated.id()).param("businessNow",Timestamp.from(clock.instant()))
                 .param("note", note, Types.VARCHAR)
                 .param("fromStatus", previous.status().name())
                 .param("toStatus", updated.status().name())
@@ -200,15 +202,15 @@ public class VisitRepository {
                     FOR UPDATE
                 ), updated AS (
                     UPDATE visit v SET appointment_status = 'NOT_ATTENDED_FTR', status = 'CLOSED',
-                        closed_at = CURRENT_TIMESTAMP, version = v.version + 1
+                        closed_at = :businessNow, version = v.version + 1
                     FROM candidates c WHERE v.id = c.id
                     RETURNING v.id, c.status AS previous_status
                 )
                 INSERT INTO visit_event (visit_id, from_status, to_status, actor, created_at, note)
-                SELECT id, previous_status, 'CLOSED', 'SYSTEM', CURRENT_TIMESTAMP,
+                SELECT id, previous_status, 'CLOSED', 'SYSTEM', :businessNow,
                     'Automatic FTR at business-day rollover: SCHEDULED -> NOT_ATTENDED_FTR.'
                 FROM updated
-                """).param("businessDate", businessDate).update();
+                """).param("businessDate", businessDate).param("businessNow",Timestamp.from(clock.instant())).update();
     }
 
     public Optional<Visit> reportFtr(Visit previous) {

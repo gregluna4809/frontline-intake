@@ -26,11 +26,12 @@ public class BusinessDayService {
     private final CoverageRepository coverage;
     private final ObjectMapper mapper;
     private final com.frontline.resource.ResourceSessionRepository sessions;
+    private final java.time.Clock clock;
 
     public BusinessDayService(JdbcClient jdbc, BusinessCalendar calendar, VisitRepository visits,
                               ResourceRepository resources, StaffRepository staff,
                               CoverageRepository coverage, ObjectMapper mapper,
-                              com.frontline.resource.ResourceSessionRepository sessions) {
+                              com.frontline.resource.ResourceSessionRepository sessions, java.time.Clock businessClock) {
         this.jdbc = jdbc;
         this.calendar = calendar;
         this.visits = visits;
@@ -39,6 +40,7 @@ public class BusinessDayService {
         this.coverage = coverage;
         this.mapper = mapper;
         this.sessions = sessions;
+        this.clock = businessClock;
     }
 
     // Called before mutations, opening reset, and scheduled close. The same lock
@@ -101,8 +103,8 @@ public class BusinessDayService {
                 "resources", inventory, "staff", staff.findAll(),
                 "coverage", coverage.rotation(date), "callOuts", coverage.callOuts(date));
         try {
-            jdbc.sql("INSERT INTO business_day_snapshot (business_date, payload) VALUES (:date, CAST(:payload AS jsonb))")
-                    .param("date", date).param("payload", mapper.writeValueAsString(payload)).update();
+            jdbc.sql("INSERT INTO business_day_snapshot (business_date, captured_at, payload) VALUES (:date, :now, CAST(:payload AS jsonb))")
+                    .param("date", date).param("now",java.sql.Timestamp.from(clock.instant())).param("payload", mapper.writeValueAsString(payload)).update();
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Cannot save snapshot.", exception);
         }

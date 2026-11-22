@@ -63,6 +63,7 @@ class OnlineFirstApiTest {
     @MockitoSpyBean VisitRepository visitRepository;
     @Autowired TrafficSimulator simulator;
     @Autowired com.frontline.simulator.SimulatorRepository simulatorRepository;
+    @Autowired com.frontline.sandbox.SandboxContext sandbox;
 
     @BeforeEach
     void reset() {
@@ -286,7 +287,7 @@ class OnlineFirstApiTest {
                 Map.of("PHONE_ACCESS", 70, "UI_ACCOUNT", 70), Map.of("MANDATORY", 1), 0);
         var engine = new com.frontline.simulator.SimulatorEngine(simulatorRepository, activeSettings,
                 new com.frontline.simulator.SimulatorWork(simulatorRepository, activeSettings, visits, helpRequests,
-                        new com.frontline.help.HelpRequestRepository(org.springframework.jdbc.core.simple.JdbcClient.create(jdbc))), visits);
+                        new com.frontline.help.HelpRequestRepository(org.springframework.jdbc.core.simple.JdbcClient.create(jdbc),clock), sandbox), visits, sandbox);
         var simulator = new TrafficSimulator(engine, simulatorRepository, activeSettings,
                 new com.frontline.business.BusinessCalendar(clock, () -> java.util.Set.of()), clock);
         simulator.start(); simulator.tick();

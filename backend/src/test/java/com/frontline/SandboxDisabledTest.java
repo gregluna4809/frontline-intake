@@ -1,0 +1,24 @@
+package com.frontline;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest(properties="business.scheduling.enabled=false") @AutoConfigureMockMvc @Testcontainers
+class SandboxDisabledTest {
+    @Container @ServiceConnection static PostgreSQLContainer<?> postgres=new PostgreSQLContainer<>("postgres:17");
+    @Autowired MockMvc mvc;
+    @Test void sandboxOffReturns404AndLiveStatusUsesRealSpeed() throws Exception {
+        mvc.perform(get("/api/sandbox/state")).andExpect(status().isNotFound());
+        mvc.perform(post("/api/sandbox/day").contentType("application/json").content("{\"mode\":\"NEXT\"}")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/business-status")).andExpect(status().isOk()).andExpect(jsonPath("$.sandbox").value(false)).andExpect(jsonPath("$.speed").value(1)).andExpect(jsonPath("$.serverNow").isString());
+    }
+}
