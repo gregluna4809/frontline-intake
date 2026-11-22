@@ -34,17 +34,22 @@ public class ResourceRepository {
 
     private List<ResourceInventoryItem> inventory(LocalDate businessDate, boolean snapshot) {
         return jdbc.sql("""
-                SELECT r.id, r.type, r.label,
+                SELECT r.id, r.type, r.label, room.code AS room_code, room.name AS room_name,
                        CASE WHEN :snapshot THEN CASE WHEN v.id IS NULL THEN 'FREE' ELSE 'OCCUPIED' END
                             ELSE r.status END AS status, v.id AS visit_id, v.ticket, v.version AS visit_version,
                        c.id AS customer_id, c.display_name, c.language, c.veteran,
                        (SELECT max(e.created_at) FROM visit_event e
                         WHERE e.visit_id = v.id AND e.to_status = 'AT_RESOURCE') AS assigned_at
                 FROM resource r
+                JOIN room ON room.id = r.room_id
                 LEFT JOIN visit v ON v.id = r.active_visit_id AND v.status = 'AT_RESOURCE' AND r.status = 'OCCUPIED'
                     AND v.business_date = :businessDate
                 LEFT JOIN customer c ON c.id = v.customer_id
-                ORDER BY r.type, r.label, r.id
+                WHERE (room.active_from IS NULL OR room.active_from <= :businessDate)
+                  AND (room.active_to IS NULL OR room.active_to >= :businessDate)
+                  AND (r.active_from IS NULL OR r.active_from <= :businessDate)
+                  AND (r.active_to IS NULL OR r.active_to >= :businessDate)
+                ORDER BY room.sort_order, r.type, r.label, r.id
                 """).param("businessDate", businessDate).param("snapshot", snapshot).query((rs, row) -> {
                     Long customerId = rs.getObject("customer_id", Long.class);
                     Customer customer = customerId == null ? null : new Customer(customerId,
@@ -54,7 +59,8 @@ public class ResourceRepository {
                     return new ResourceInventoryItem(mapResource(rs, row),
                             rs.getObject("visit_id", Long.class), rs.getString("ticket"), customer,
                             rs.getObject("visit_version", Long.class),
-                            assignedAt == null ? null : assignedAt.toInstant());
+                            assignedAt == null ? null : assignedAt.toInstant(),
+                            rs.getString("room_code"), rs.getString("room_name"));
                 }).list();
     }
 
@@ -68,14 +74,19 @@ public class ResourceRepository {
                 .param("id", resourceId).param("visitId", visitId).update();
     }
 
-    public Optional<Resource> assignLowestFree(Resource.Type type) {
-        // Lock this small inventory in label order. Competing assignments wait,
+    public Optional<Resource> assignLowestFree(Resource.Type type, LocalDate businessDate) {
+        // Lock active inventory in room/label order. Competing assignments wait,
         // then inspect the committed status instead of skipping a lower label.
         var resources = jdbc.sql("""
-                SELECT * FROM resource WHERE type = :type
-                ORDER BY label, id FOR UPDATE
+                SELECT r.* FROM resource r JOIN room ON room.id = r.room_id
+                WHERE r.type = :type
+                  AND (room.active_from IS NULL OR room.active_from <= :businessDate)
+                  AND (room.active_to IS NULL OR room.active_to >= :businessDate)
+                  AND (r.active_from IS NULL OR r.active_from <= :businessDate)
+                  AND (r.active_to IS NULL OR r.active_to >= :businessDate)
+                ORDER BY room.sort_order, r.label, r.id FOR UPDATE OF r
                 """)
-                .param("type", type.name()).query(this::mapResource).list();
+                .param("type", type.name()).param("businessDate", businessDate).query(this::mapResource).list();
         return resources.stream().filter(resource -> resource.status() == Resource.Status.FREE)
                 .findFirst().map(resource -> {
                     jdbc.sql("UPDATE resource SET status = 'OCCUPIED' WHERE id = :id")

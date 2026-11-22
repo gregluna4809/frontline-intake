@@ -305,7 +305,7 @@ class BusinessApiTest {
     void snapshotValidatesDatesAndSupportsDaysWithoutVisits() throws Exception {
         mvc.perform(get("/api/snapshot").param("date", "2026-09-10"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.visits.length()").value(0))
-                .andExpect(jsonPath("$.resources.length()").value(16));
+                .andExpect(jsonPath("$.resources.length()").value(51));
         for (String date : List.of("bad", "2026-09-14", "2026-09-15", "2026-09-13", "2026-09-07")) {
             mvc.perform(get("/api/snapshot").param("date", date)).andExpect(status().isBadRequest());
         }

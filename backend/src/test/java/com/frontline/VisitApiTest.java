@@ -48,6 +48,7 @@ class VisitApiTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired VisitService service;
     @Autowired BusinessCalendar calendar;
+    @Autowired com.frontline.resource.ResourceRepository resources;
     @MockitoSpyBean VisitRepository repository;
 
     @BeforeEach
@@ -70,13 +71,13 @@ class VisitApiTest {
                 "SELECT count(*) FROM customer WHERE display_name ~ '^Demo Customer [0-9]{3}$'",
                 Integer.class)).isEqualTo(50);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE type = 'PHONE'", Integer.class))
-                .isEqualTo(6);
+                .isEqualTo(18);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE type = 'COMPUTER'", Integer.class))
-                .isEqualTo(8);
+                .isEqualTo(31);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE type = 'STATION'", Integer.class))
                 .isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE status = 'FREE'", Integer.class))
-                .isEqualTo(16);
+                .isEqualTo(51);
     }
 
     @Test
@@ -359,7 +360,7 @@ class VisitApiTest {
         Visit visit = atResource(Visit.Reason.PHONE_ACCESS);
         mvc.perform(get("/api/resources"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(16))
+                .andExpect(jsonPath("$.length()").value(51))
                 .andExpect(jsonPath("$[?(@.label == 'Phone 01')].ticket")
                         .value(org.hamcrest.Matchers.contains(visit.ticket())))
                 .andExpect(jsonPath("$[?(@.label == 'Phone 01')].customer.displayName")
@@ -444,7 +445,9 @@ class VisitApiTest {
     @Test
     void assignUsesFreedLowestLabelAndPreservesReasonAndCustomer() throws Exception {
         List<Visit> occupied = new ArrayList<>();
-        for (int i = 0; i < 6; i++) occupied.add(atResource(Visit.Reason.PHONE_ACCESS));
+        long phoneCount = resources.inventory(calendar.currentBusinessDate()).stream()
+                .filter(item -> item.resource().type() == Resource.Type.PHONE).count();
+        for (int i = 0; i < phoneCount; i++) occupied.add(atResource(Visit.Reason.PHONE_ACCESS));
         Visit waiting = atResource(Visit.Reason.PHONE_ACCESS);
         assertThat(waiting.status()).isEqualTo(Visit.Status.WAITING_RESOURCE);
         mvc.perform(get("/api/visits").param("status", "WAITING_RESOURCE"))

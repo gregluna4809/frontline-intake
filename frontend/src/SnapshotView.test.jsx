@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
+import SnapshotView from './SnapshotView.jsx';
 import { businessStatus, staff, rotation, ok } from './testQueues.js';
 
 const snapshot = {
@@ -15,6 +16,13 @@ const snapshot = {
   resources: [{ id: 1, label: 'Phone 01', type: 'PHONE', status: 'OCCUPIED', ticket: 'B0001' }],
 };
 const closed = { isOpen: false, currentBusinessDate: snapshot.businessDate, lastCompletedBusinessDate: snapshot.businessDate };
+
+test('old-shape snapshot resources render with Resource Room fallback', () => {
+  render(<SnapshotView snapshot={snapshot} role="resource-room" />);
+  expect(screen.getByText('Phone 01')).toBeTruthy();
+  expect(screen.getByText('Resource Room')).toBeTruthy();
+  expect(screen.getByText('OCCUPIED')).toBeTruthy();
+});
 beforeEach(() => { saveAuth({ token: 'test-manager-token', staffId: 9, role: 'CENTER_MANAGER', displayName: 'Demo Manager' }); });
 afterEach(() => { sessionStorage.clear(); cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/kiosk'); });
 

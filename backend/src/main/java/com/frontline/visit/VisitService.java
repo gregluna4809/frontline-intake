@@ -98,7 +98,7 @@ public class VisitService {
         if (previous.visitType() == Visit.VisitType.APPOINTMENT) {
             return describe(transition(previous, Visit.Status.WAITING_STAFF, previous.customerId(), null));
         }
-        Resource resource = resources.assignLowestFree(previous.requiredResourceType()).orElse(null);
+        Resource resource = resources.assignLowestFree(previous.requiredResourceType(), previous.businessDate()).orElse(null);
         if (resource != null) resources.setOccupant(resource.id(), previous.id());
         Visit.Status next = resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE;
         Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id());
@@ -158,7 +158,7 @@ public class VisitService {
     @Transactional
     public VisitDetail assign(long id, long expectedVersion) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_RESOURCE);
-        Resource resource = resources.assignLowestFree(previous.requiredResourceType())
+        Resource resource = resources.assignLowestFree(previous.requiredResourceType(), previous.businessDate())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "No matching resource is free. Refresh the inventory before trying again."));
         resources.setOccupant(resource.id(), previous.id());

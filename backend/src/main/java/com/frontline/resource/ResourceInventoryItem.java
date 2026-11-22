@@ -7,5 +7,5 @@ import java.time.Instant;
 
 public record ResourceInventoryItem(
         @JsonUnwrapped Resource resource, Long visitId, String ticket, Customer customer,
-        Long visitVersion, Instant assignedAt
+        Long visitVersion, Instant assignedAt, String roomCode, String roomName
 ) {}

@@ -77,6 +77,22 @@ function mockRoom({ conflict = false } = {}) {
   return { state, fetchMock };
 }
 
+test('resource room preserves endpoint room order and groups resources by room then type', async () => {
+  const { state } = mockRoom();
+  state.resources = state.resources.map(resource => ({ ...resource, roomCode: 'RESOURCE_ROOM', roomName: 'Resource Room' }));
+  state.resources.push({ id: 20, type: 'PHONE', label: 'OR-Phone 01', status: 'FREE',
+    roomCode: 'ORIENTATION_ROOM', roomName: 'Orientation Room' });
+  render(<App />);
+  const orientation = await screen.findByRole('region', { name: 'Orientation Room' });
+  const resourceRoom = screen.getByRole('region', { name: 'Resource Room' });
+  expect(within(resourceRoom).getByRole('article', { name: 'Phone 01' })).toBeTruthy();
+  expect(within(orientation).getByRole('article', { name: 'OR-Phone 01' })).toBeTruthy();
+  expect(within(resourceRoom).queryByRole('article', { name: 'OR-Phone 01' })).toBeNull();
+  expect(screen.getAllByRole('heading', { level: 2 }).map(heading => heading.textContent))
+    .toEqual(['Resource Room', 'Phones', 'Computers', 'Stations', 'Orientation Room', 'Phones', 'Computers', 'Stations', 'Waiting for a resource']);
+  expect(screen.queryByRole('region', { name: 'Workshop Room' })).toBeNull();
+});
+
 test('resource room groups inventory, shows customers, and flags only visits over 45 minutes', async () => {
   mockRoom();
   render(<App />);

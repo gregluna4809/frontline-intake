@@ -32,7 +32,7 @@ export default function SnapshotView({ snapshot, role, staffId }) {
       {role === 'resource-room' && <section aria-label="Resources at close">
         <h2>Resources at close</h2>
         <ul className="snapshot-resources">{snapshot.resources.map(resource => <li key={resource.id}>
-          <strong>{resource.label}</strong><span>{resource.status}</span>
+          <strong>{resource.label}</strong><span>{resource.roomName || 'Resource Room'}</span><span>{resource.status}</span>
           {resource.ticket && <span>{resource.ticket} &mdash; {resource.customer?.displayName || 'Not identified'}</span>}
         </li>)}</ul>
       </section>}

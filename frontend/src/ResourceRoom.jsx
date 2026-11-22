@@ -97,11 +97,15 @@ export default function ResourceRoom() {
       {!snapshot ? <p role="status" className="empty">{queueError ? 'Inventory unavailable.' : 'Loading resource room…'}</p> :
         <div className="resource-room-layout" aria-busy={disabled}>
           <div className="resource-inventory">
+            {[...new Map(snapshot.resources.map(resource => [resource.roomCode || 'RESOURCE_ROOM',
+              resource.roomName || 'Resource Room'])).entries()].map(([roomCode, roomName]) => (
+              <section key={roomCode} aria-label={roomName}>
+                <h2>{roomName}</h2>
             {groups.map(([type, label]) => (
               <section className="resource-group" key={type} aria-label={label}>
                 <h2>{label}</h2>
                 <div className="resource-grid">
-                  {snapshot.resources.filter(resource => resource.type === type).map(resource => {
+                  {snapshot.resources.filter(resource => (resource.roomCode || 'RESOURCE_ROOM') === roomCode && resource.type === type).map(resource => {
                     const occupied = resource.status === 'OCCUPIED';
                     const overdue = occupied && resource.assignedAt &&
                       now - new Date(resource.assignedAt).getTime() > RESOURCE_ALERT_MINUTES * 60000;
@@ -131,6 +135,8 @@ export default function ResourceRoom() {
                     );
                   })}
                 </div>
+              </section>
+            ))}
               </section>
             ))}
           </div>
