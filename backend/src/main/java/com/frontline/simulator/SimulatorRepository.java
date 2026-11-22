@@ -38,9 +38,13 @@ public class SimulatorRepository {
                 """).param("language", language).param("veteran", veteran).query(Long.class).single();
     }
     public void schedule(long visit, String action, Instant due, Long customer, Long session) {
-        jdbc.sql("INSERT INTO sim_task (visit_id, action, due_at, customer_id, resource_session_id) VALUES (:visit, :action, :due, :customer, :session)")
+        schedule(visit, action, due, customer, session, null, null);
+    }
+    public void schedule(long visit, String action, Instant due, Long customer, Long session, Long staff, Long help) {
+        jdbc.sql("INSERT INTO sim_task (visit_id, action, due_at, customer_id, resource_session_id, staff_id, help_request_id) VALUES (:visit, :action, :due, :customer, :session, :staff, :help)")
                 .param("visit", visit).param("action", action).param("due", Timestamp.from(due))
-                .param("customer", customer, Types.BIGINT).param("session", session, Types.BIGINT).update();
+                .param("customer", customer, Types.BIGINT).param("session", session, Types.BIGINT)
+                .param("staff", staff, Types.BIGINT).param("help", help, Types.BIGINT).update();
     }
     public List<Task> due(LocalDate date, Instant now) {
         return jdbc.sql("""
@@ -79,6 +83,56 @@ public class SimulatorRepository {
                 ORDER BY v.created_at, v.id
                 """).param("date", date).query(Long.class).list();
     }
+    public List<Long> engineAppointments(LocalDate date) {
+        return jdbc.sql("""
+                SELECT v.id FROM visit v WHERE v.business_date = :date AND v.visit_type = 'APPOINTMENT'
+                  AND v.status NOT IN ('CLOSED', 'LEFT') AND EXISTS
+                    (SELECT 1 FROM sim_task t WHERE t.visit_id = v.id AND t.action = 'IDENTIFY_AND_ROUTE')
+                ORDER BY v.created_at, v.id
+                """).param("date", date).query(Long.class).list();
+    }
+    public boolean hasAppointmentTask(long visit) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM sim_task WHERE visit_id = :visit AND action = 'CLOSE_APPOINTMENT' AND done_at IS NULL)")
+                .param("visit", visit).query(Boolean.class).single();
+    }
+    public boolean free(long staff) {
+        return jdbc.sql("SELECT NOT EXISTS (SELECT 1 FROM sim_task WHERE staff_id = :staff AND action IN ('FINISH_HELP', 'CLOSE_APPOINTMENT') AND done_at IS NULL)")
+                .param("staff", staff).query(Boolean.class).single();
+    }
+    public Optional<Long> freeStaff(LocalDate date, String duty) {
+        return jdbc.sql("""
+                SELECT s.id FROM staff s JOIN staff_rotation r ON r.staff_id = s.id AND r.day_of_week = :weekday
+                LEFT JOIN call_out c ON c.staff_id = s.id AND c.date = :date
+                WHERE s.active AND s.role = 'LSR'
+                  AND (CASE WHEN c.id IS NOT NULL THEN 'RESOURCE_ROOM' ELSE r.duty_type END) = :duty
+                  AND NOT EXISTS (SELECT 1 FROM sim_task t WHERE t.staff_id = s.id
+                    AND t.action IN ('FINISH_HELP', 'CLOSE_APPOINTMENT') AND t.done_at IS NULL)
+                ORDER BY s.id LIMIT 1
+                """).param("date", date).param("weekday", date.getDayOfWeek().getValue()).param("duty", duty).query(Long.class).optional();
+    }
+    public boolean activeLsr(long staff) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM staff WHERE id = :id AND active AND role = 'LSR')")
+                .param("id", staff).query(Boolean.class).single();
+    }
+    public Optional<Long> clerk() {
+        return jdbc.sql("SELECT id FROM staff WHERE active AND role = 'CLERK' ORDER BY id LIMIT 1").query(Long.class).optional();
+    }
+    public long openHelp(LocalDate date) {
+        return jdbc.sql("SELECT count(*) FROM help_request WHERE business_date = :date AND closed_at IS NULL")
+                .param("date", date).query(Long.class).single();
+    }
+    public long appointmentsWaiting(LocalDate date) {
+        return jdbc.sql("""
+                SELECT count(*) FROM visit v WHERE v.business_date = :date AND v.visit_type = 'APPOINTMENT' AND v.status = 'WAITING_STAFF'
+                  AND NOT EXISTS (SELECT 1 FROM sim_task t WHERE t.visit_id = v.id AND t.action = 'CLOSE_APPOINTMENT' AND t.done_at IS NULL)
+                """).param("date", date).query(Long.class).single();
+    }
+    public long appointmentsBeingServed(LocalDate date) {
+        return jdbc.sql("""
+                SELECT count(*) FROM visit v WHERE v.business_date = :date AND v.visit_type = 'APPOINTMENT' AND v.status = 'WAITING_STAFF'
+                  AND EXISTS (SELECT 1 FROM sim_task t WHERE t.visit_id = v.id AND t.action = 'CLOSE_APPOINTMENT' AND t.done_at IS NULL)
+                """).param("date", date).query(Long.class).single();
+    }
     public void swept(LocalDate date, Instant now) {
         jdbc.sql("UPDATE sim_task SET done_at = :now, outcome = 'CLOSED_DAY' WHERE done_at IS NULL AND visit_id IN (SELECT id FROM visit WHERE business_date = :date)")
                 .param("date", date).param("now", Timestamp.from(now)).update();
@@ -97,6 +151,7 @@ public class SimulatorRepository {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulator switch not found."));
     }
     public record Day(LocalDate businessDate, int targetArrivals, long seed, int arrivalsSoFar, Instant sweptAt) {}
-    public record Task(long id, long visitId, String action, Instant dueAt, Instant doneAt, String outcome, Long customerId, Long resourceSessionId) {}
+    public record Task(long id, long visitId, String action, Instant dueAt, Instant doneAt, String outcome,
+                       Long customerId, Long resourceSessionId, Long staffId, Long helpRequestId) {}
     public record Switch(String role, boolean enabled) {}
 }

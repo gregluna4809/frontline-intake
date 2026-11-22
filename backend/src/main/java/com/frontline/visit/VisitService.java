@@ -219,12 +219,21 @@ public class VisitService {
 
     @Transactional
     public VisitDetail needsPhone(long id, long requestId) {
+        return needsPhone(id, requestId, null);
+    }
+
+    @Transactional
+    public VisitDetail needsPhone(long id, long requestId, String actor) {
         days.resetResourcesForOpening();
         Visit previous = requireStatus(findVisit(id), Visit.Status.AT_RESOURCE);
-        return moveToPhone(previous, "help request " + requestId + ": needs phone");
+        return moveToPhone(previous, "help request " + requestId + ": needs phone", actor);
     }
 
     private VisitDetail moveToPhone(Visit previous, String note) {
+        return moveToPhone(previous, note, null);
+    }
+
+    private VisitDetail moveToPhone(Visit previous, String note, String actor) {
         if (previous.visitType() != Visit.VisitType.WALK_IN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phone handoff requires a walk-in.");
         }
@@ -237,12 +246,17 @@ public class VisitService {
             sessions.open(previous, resource.id());
         }
         Visit updated = transition(previous, resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE,
-                previous.customerId(), resource == null ? null : resource.id(), note);
+                previous.customerId(), resource == null ? null : resource.id(), note, actor);
         return describe(updated);
     }
 
     @Transactional
     public VisitDetail assignStaff(long id, long staffId, long expectedVersion) {
+        return assignStaff(id, staffId, expectedVersion, null);
+    }
+
+    @Transactional
+    public VisitDetail assignStaff(long id, long staffId, long expectedVersion, String actor) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_STAFF);
         Staff target = staff.findById(staffId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Staff not found."));
@@ -250,7 +264,9 @@ public class VisitService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Visits can only be assigned to an active LSR.");
         }
         Visit updated = repository.assignStaff(previous, staffId).orElseThrow(this::staleVersion);
-        repository.recordTransition(previous, updated);
+        if (actor == null) repository.recordTransition(previous, updated);
+        else repository.recordTransition(previous, updated, previous.assignedStaffId() == null
+                ? "Assigned staff ID: " + staffId + "." : "Reassigned staff from ID: " + previous.assignedStaffId() + " to ID: " + staffId + ".", actor);
         return describe(updated);
     }
 

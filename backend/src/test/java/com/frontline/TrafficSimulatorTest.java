@@ -177,7 +177,7 @@ class TrafficSimulatorTest {
         simulator.start(); at(DATE, "16:40"); simulator.tick();
         assertThat(visits.detail(occupied.id()).visit().status()).isEqualTo(Visit.Status.CLOSED);
         assertThat(visits.detail(waiting.id()).visit().status()).isEqualTo(Visit.Status.LEFT);
-        assertThat(visits.detail(appointment.id()).visit()).isEqualTo(appointment);
+        assertThat(visits.detail(appointment.id()).visit().status()).isEqualTo(Visit.Status.LEFT);
         assertThat(visits.detail(human.id()).visit()).isEqualTo(human);
         assertThat(repository.day(DATE).orElseThrow().sweptAt()).isEqualTo(now());
         assertThat(count("SELECT count(*) FROM sim_task WHERE outcome = 'CLOSED_DAY'")).isEqualTo(3);
@@ -219,8 +219,10 @@ class TrafficSimulatorTest {
         assertThatThrownBy(() -> SimulatorTestSettings.settings(Map.of("OTHER",1), Map.of("MANDATORY",1), 1.1)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SimulatorProperties.Range(5,4)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SimulatorProperties.DailyRange(DATE, -1,10)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SimulatorProperties(false, 4, settings.weights(), settings.appointmentWeights(), settings.dailyArrivals(), Map.of(), settings.clerkDelayMinutes(), settings.sessionMinutes(), 0,5)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SimulatorProperties(false, 4, settings.weights(), settings.appointmentWeights(), settings.dailyArrivals(), settings.curve(), settings.clerkDelayMinutes(), settings.sessionMinutes(), 0,0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SimulatorProperties(false, 4, settings.weights(), settings.appointmentWeights(), settings.dailyArrivals(), Map.of(), settings.clerkDelayMinutes(), settings.sessionMinutes(), 0,5,
+                settings.scenario(), settings.helpRate(), settings.helpOutcomes(), settings.helpClaimDelayMinutes(), settings.helpWorkMinutes(), settings.appointmentMinutes(), settings.referredOutLeaveMinutes())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SimulatorProperties(false, 4, settings.weights(), settings.appointmentWeights(), settings.dailyArrivals(), settings.curve(), settings.clerkDelayMinutes(), settings.sessionMinutes(), 0,0,
+                settings.scenario(), settings.helpRate(), settings.helpOutcomes(), settings.helpClaimDelayMinutes(), settings.helpWorkMinutes(), settings.appointmentMinutes(), settings.referredOutLeaveMinutes())).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void clerkQueuesUnservedWalkInWithTimedDeparture() {
         seed(1); at(DATE, "10:00"); work.arrive(DATE, 0, now());

@@ -52,6 +52,19 @@ simulator:
     station: {min: 5, max: 15}
   leave-early-rate: 0.05
   tick-seconds: 5
+  scenario: SHIFT_TO_ONLINE
+  help-rate:
+    UI_ACCOUNT: 0.40
+    COMPUTER_ACCESS: 0.15
+    JOB_SEARCH: 0.15
+  help-outcomes:
+    shift-to-online: {needs-phone: 0.30, referred-out: 0.05}
+    behavior-unchanged: {needs-phone: 0.70, referred-out: 0.05}
+    computer: {needs-phone: 0.0, referred-out: 0.10}
+  help-claim-delay-minutes: {min: 1, max: 5}
+  help-work-minutes: {min: 3, max: 10}
+  appointment-minutes: {min: 20, max: 40}
+  referred-out-leave-minutes: {min: 1, max: 5}
   weights:
     PHONE_ACCESS: 70
     UI_ACCOUNT: 70

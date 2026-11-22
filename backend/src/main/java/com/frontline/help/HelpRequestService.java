@@ -44,6 +44,11 @@ public class HelpRequestService {
     }
     @Transactional
     public HelpRequest close(long id, long version, long staffId, String role, HelpRequest.Outcome outcome) {
+        return close(id, version, staffId, role, outcome, null);
+    }
+
+    @Transactional
+    public HelpRequest close(long id, long version, long staffId, String role, HelpRequest.Outcome outcome, String actor) {
         HelpRequest request = requireVersion(id, version);
         if (outcome == null || outcome == HelpRequest.Outcome.VISIT_ENDED || outcome == HelpRequest.Outcome.EXPIRED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose RESOLVED_ONLINE, NEEDS_PHONE or REFERRED_OUT.");
@@ -55,7 +60,7 @@ public class HelpRequestService {
         if (outcome == HelpRequest.Outcome.NEEDS_PHONE && repository.computerSession(request.visitId())
                 .filter(session -> session == request.sessionId()).isEmpty()) throw conflict("The computer session has ended.");
         repository.close(id, staffId, outcome);
-        if (outcome == HelpRequest.Outcome.NEEDS_PHONE) visits.needsPhone(request.visitId(), id);
+        if (outcome == HelpRequest.Outcome.NEEDS_PHONE) visits.needsPhone(request.visitId(), id, actor);
         return find(id);
     }
     private HelpRequest requireVersion(long id, long version) {

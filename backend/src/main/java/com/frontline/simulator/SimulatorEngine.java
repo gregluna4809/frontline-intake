@@ -54,6 +54,15 @@ public class SimulatorEngine {
                 }
             }
         }
+        if (repository.enabled("APPOINTMENT_LSRS")) {
+            for (var item : visits.list(Visit.Status.WAITING_STAFF, date)) {
+                if (item.visit().visitType() != Visit.VisitType.APPOINTMENT) continue;
+                try { if (!work.serveAppointment(item.visit().id(), now)) break; }
+                catch (ResponseStatusException exception) {
+                    if (exception.getStatusCode().value() != 409 && exception.getStatusCode().value() != 412) throw exception;
+                }
+            }
+        }
         return created;
     }
 }

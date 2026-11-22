@@ -69,6 +69,8 @@ export default function SimulatorControl() {
         <small>Business day {business.currentBusinessDate}</small>
       </span>}
       {status && <span className="simulator-rate">{status.arrivalsSoFar || 0} / {status.targetArrivals || 0} arrivals</span>}
+      {status?.scenario && <span>Scenario {status.scenario}</span>}
+      {status && <span>Help {status.openHelpRequests || 0} · Appointments waiting {status.appointmentsWaiting || 0} · Serving {status.appointmentsBeingServed || 0}</span>}
       {canManageSwitches && switches.map(item => <label key={item.role}>
         <input type="checkbox" checked={item.enabled} disabled={pending} onChange={() => toggleSwitch(item)} />
         {item.role}

@@ -14,11 +14,14 @@ test('simulator loads target and arrivals and starts and stops through the backe
     }) };
     if (path.endsWith('/start')) running = true;
     if (path.endsWith('/stop')) running = false;
-    return { ok: true, json: async () => ({ running, targetArrivals: 275, arrivalsSoFar: 42, openTaskCount: 3 }) };
+    return { ok: true, json: async () => ({ running, targetArrivals: 275, arrivalsSoFar: 42, openTaskCount: 3,
+      scenario: 'SHIFT_TO_ONLINE', openHelpRequests: 2, appointmentsWaiting: 4, appointmentsBeingServed: 1 }) };
   });
   vi.stubGlobal('fetch', fetchMock);
   render(<SimulatorControl />);
   expect(await screen.findByText('42 / 275 arrivals')).toBeTruthy();
+  expect(screen.getByText('Scenario SHIFT_TO_ONLINE')).toBeTruthy();
+  expect(screen.getByText('Help 2 · Appointments waiting 4 · Serving 1')).toBeTruthy();
   expect(screen.getByText('Stopped')).toBeTruthy();
   expect(screen.getByText('Open')).toBeTruthy();
   expect(screen.getByText('Business day 2026-09-08')).toBeTruthy();

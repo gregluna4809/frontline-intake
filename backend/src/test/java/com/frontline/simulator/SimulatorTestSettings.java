@@ -14,6 +14,12 @@ public final class SimulatorTestSettings {
                 List.of(new SimulatorProperties.DailyRange(null, 200, 250), new SimulatorProperties.DailyRange(LocalDate.parse("2026-11-30"), 250, 300)),
                 curve, new SimulatorProperties.Range(1,4), new SimulatorProperties.SessionMinutes(
                     new SimulatorProperties.Range(15,30), new SimulatorProperties.Range(20,45),
-                    new SimulatorProperties.Range(30,60), new SimulatorProperties.Range(5,15)), early, 5);
+                    new SimulatorProperties.Range(30,60), new SimulatorProperties.Range(5,15)), early, 5,
+                SimulatorProperties.Scenario.SHIFT_TO_ONLINE,
+                Map.of("UI_ACCOUNT",0.4,"COMPUTER_ACCESS",0.15,"JOB_SEARCH",0.15),
+                new SimulatorProperties.HelpOutcomes(new SimulatorProperties.OutcomeRates(0.3,0.05),
+                    new SimulatorProperties.OutcomeRates(0.7,0.05), new SimulatorProperties.OutcomeRates(0,0.1)),
+                new SimulatorProperties.Range(1,5), new SimulatorProperties.Range(3,10),
+                new SimulatorProperties.Range(20,40), new SimulatorProperties.Range(1,5));
     }
 }

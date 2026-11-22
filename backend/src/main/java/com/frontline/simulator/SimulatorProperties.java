@@ -7,7 +7,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SimulatorProperties(boolean enabled, int arrivalsPerMinute, Map<String,Integer> weights,
                                   Map<String,Integer> appointmentWeights, List<DailyRange> dailyArrivals,
                                   Map<String,Integer> curve, Range clerkDelayMinutes, SessionMinutes sessionMinutes,
-                                  double leaveEarlyRate, int tickSeconds) {
+                                  double leaveEarlyRate, int tickSeconds, Scenario scenario,
+                                  Map<String,Double> helpRate, HelpOutcomes helpOutcomes,
+                                  Range helpClaimDelayMinutes, Range helpWorkMinutes,
+                                  Range appointmentMinutes, Range referredOutLeaveMinutes) {
     public SimulatorProperties {
         if (arrivalsPerMinute < 0) throw new IllegalArgumentException("Simulator rate must be nonnegative.");
         weights = validate(weights, "PHONE_ACCESS","UI_ACCOUNT","APPOINTMENT","COMPUTER_ACCESS","JOB_SEARCH","DOCUMENT_SERVICES","BENEFITS_ASSISTANCE","OTHER");
@@ -31,6 +34,13 @@ public record SimulatorProperties(boolean enabled, int arrivalsPerMinute, Map<St
         if (clerkDelayMinutes == null || sessionMinutes == null || tickSeconds <= 0
                 || !Double.isFinite(leaveEarlyRate) || leaveEarlyRate < 0 || leaveEarlyRate > 1)
             throw new IllegalArgumentException("Invalid simulator timing or leave-early rate.");
+        if (scenario == null || helpOutcomes == null || helpClaimDelayMinutes == null || helpWorkMinutes == null
+                || appointmentMinutes == null || referredOutLeaveMinutes == null)
+            throw new IllegalArgumentException("All simulator help and appointment settings are required.");
+        if (helpRate == null || !helpRate.keySet().equals(Set.of("UI_ACCOUNT", "COMPUTER_ACCESS", "JOB_SEARCH")))
+            throw new IllegalArgumentException("Help rates require UI_ACCOUNT, COMPUTER_ACCESS and JOB_SEARCH only.");
+        helpRate.forEach((reason, rate) -> { if (rate == null || !Double.isFinite(rate) || rate < 0 || rate > 1) throw new IllegalArgumentException("Invalid help rate: " + reason); });
+        helpRate = Collections.unmodifiableMap(new TreeMap<>(helpRate));
     }
     private static Map<String,Integer> validate(Map<String,Integer> weights, String... allowed) {
         if (weights == null || weights.isEmpty()) throw new IllegalArgumentException("Simulator weights required.");
@@ -57,5 +67,28 @@ public record SimulatorProperties(boolean enabled, int arrivalsPerMinute, Map<St
     }
     public record SessionMinutes(Range phone, Range uiAccount, Range computer, Range station) {
         public SessionMinutes { if (phone == null || uiAccount == null || computer == null || station == null) throw new IllegalArgumentException("All session ranges required."); }
+    }
+    public enum Scenario { SHIFT_TO_ONLINE, BEHAVIOR_UNCHANGED }
+    public record OutcomeRates(double needsPhone, double referredOut) {
+        public OutcomeRates {
+            if (!Double.isFinite(needsPhone) || !Double.isFinite(referredOut) || needsPhone < 0 || referredOut < 0 || needsPhone + referredOut > 1)
+                throw new IllegalArgumentException("Invalid help outcome probabilities.");
+        }
+        public com.frontline.model.HelpRequest.Outcome draw(Random random) {
+            double value = random.nextDouble();
+            return value < needsPhone ? com.frontline.model.HelpRequest.Outcome.NEEDS_PHONE
+                    : value < needsPhone + referredOut ? com.frontline.model.HelpRequest.Outcome.REFERRED_OUT
+                    : com.frontline.model.HelpRequest.Outcome.RESOLVED_ONLINE;
+        }
+    }
+    public record HelpOutcomes(OutcomeRates shiftToOnline, OutcomeRates behaviorUnchanged, OutcomeRates computer) {
+        public HelpOutcomes {
+            if (shiftToOnline == null || behaviorUnchanged == null || computer == null || computer.needsPhone() != 0)
+                throw new IllegalArgumentException("All help outcomes required; computer access/job search cannot need a phone.");
+        }
+        public com.frontline.model.HelpRequest.Outcome draw(com.frontline.model.Visit.Reason reason, Scenario scenario, Random random) {
+            return (reason == com.frontline.model.Visit.Reason.UI_ACCOUNT
+                    ? scenario == Scenario.SHIFT_TO_ONLINE ? shiftToOnline : behaviorUnchanged : computer).draw(random);
+        }
     }
 }

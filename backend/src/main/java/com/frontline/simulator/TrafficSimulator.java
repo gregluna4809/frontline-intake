@@ -32,7 +32,8 @@ public class TrafficSimulator {
         var date = calendar.calendarDate();
         var day = repository.day(date).orElse(null);
         return new Status(running, properties.arrivalsPerMinute(), createdSinceStart,
-                day == null ? 0 : day.targetArrivals(), day == null ? 0 : day.arrivalsSoFar(), repository.openTasks(date));
+                day == null ? 0 : day.targetArrivals(), day == null ? 0 : day.arrivalsSoFar(), repository.openTasks(date),
+                properties.scenario(), repository.openHelp(date), repository.appointmentsWaiting(date), repository.appointmentsBeingServed(date));
     }
     @Scheduled(initialDelayString = "${simulator.tick-seconds:5}000", fixedDelayString = "${simulator.tick-seconds:5}000")
     public synchronized void tick() {
@@ -40,5 +41,6 @@ public class TrafficSimulator {
         createdSinceStart += engine.tick(calendar.currentBusinessDate(), clock.instant());
     }
     public record Status(boolean running, int arrivalsPerMinute, long createdSinceStart,
-                         int targetArrivals, int arrivalsSoFar, long openTaskCount) {}
+                         int targetArrivals, int arrivalsSoFar, long openTaskCount, SimulatorProperties.Scenario scenario,
+                         long openHelpRequests, long appointmentsWaiting, long appointmentsBeingServed) {}
 }

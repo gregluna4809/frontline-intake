@@ -285,7 +285,8 @@ class OnlineFirstApiTest {
         var activeSettings = com.frontline.simulator.SimulatorTestSettings.settings(
                 Map.of("PHONE_ACCESS", 70, "UI_ACCOUNT", 70), Map.of("MANDATORY", 1), 0);
         var engine = new com.frontline.simulator.SimulatorEngine(simulatorRepository, activeSettings,
-                new com.frontline.simulator.SimulatorWork(simulatorRepository, activeSettings, visits), visits);
+                new com.frontline.simulator.SimulatorWork(simulatorRepository, activeSettings, visits, helpRequests,
+                        new com.frontline.help.HelpRequestRepository(org.springframework.jdbc.core.simple.JdbcClient.create(jdbc))), visits);
         var simulator = new TrafficSimulator(engine, simulatorRepository, activeSettings,
                 new com.frontline.business.BusinessCalendar(clock, () -> java.util.Set.of()), clock);
         simulator.start(); simulator.tick();
