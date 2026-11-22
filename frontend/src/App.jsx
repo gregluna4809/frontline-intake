@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { reasons, reasonLabel, appointmentCategories, appointmentCategoryLabel, request } from './api.js';
+import { reasonLabel, appointmentCategories, appointmentCategoryLabel, request } from './api.js';
 import Supervisor from './Supervisor.jsx';
 import MyQueue from './MyQueue.jsx';
 import StaffNavigation from './StaffNavigation.jsx';
@@ -12,15 +12,17 @@ import FrontDesk from './FrontDesk.jsx';
 import SimulatorControl from './SimulatorControl.jsx';
 import useBusinessView from './useBusinessView.js';
 import SnapshotView from './SnapshotView.jsx';
+import useVisitReasons from './useVisitReasons.js';
 
-function Kiosk() {
+function Kiosk({ businessDate }) {
+  const activeReasons = useVisitReasons(businessDate);
   const [visitType, setVisitType] = useState('');
   const [choice, setChoice] = useState('');
   const [visit, setVisit] = useState(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const submitting = useRef(false);
-  const choices = visitType === 'APPOINTMENT' ? appointmentCategories : reasons;
+  const choices = visitType === 'APPOINTMENT' ? appointmentCategories : activeReasons.reasons.map(({ code, label }) => [code, label]);
 
   async function checkIn(event) {
     event.preventDefault();
@@ -90,7 +92,7 @@ function Kiosk() {
             </div>
           </fieldset>
         )}
-        {error && <p role="alert" className="error">{error}</p>}
+        {(error || activeReasons.error) && <p role="alert" className="error">{error || activeReasons.error}</p>}
         <div className="form-footer">
           <span>No personal details needed at check-in.</span>
           <button className="primary" disabled={!visitType || !choice || pending}>
@@ -109,9 +111,10 @@ function BusinessScreen({ screen, auth, staffId }) {
   const manager = auth?.role === 'CENTER_MANAGER';
   const chooseStaff = id => navigate('/my-queue' + (id ? '?staff=' + id : ''));
   const screens = {
-    kiosk: <Kiosk />, 'front-desk': <FrontDesk />, supervisor: <Supervisor />,
+    kiosk: <Kiosk businessDate={business.status?.currentBusinessDate} />,
+    'front-desk': <FrontDesk businessDate={business.status?.currentBusinessDate} />, supervisor: <Supervisor />,
     'my-queue': <MyQueue key={staffId} staffId={staffId} manager={manager} onStaffChange={chooseStaff} />,
-    'resource-room': <ResourceRoom />,
+    'resource-room': <ResourceRoom businessDate={business.status?.currentBusinessDate} />,
   };
   return <>
     {business.status?.isOpen === false && <div className="closed-banner" role="status">

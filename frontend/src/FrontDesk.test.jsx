@@ -1,3 +1,4 @@
+import { stubFetch } from './testPhase2Reads.js';
 import React from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -54,7 +55,7 @@ function mockWorkflow({ finalStatus = 'AT_RESOURCE', appointment = false, failRo
     }
     throw new Error('Unexpected request: ' + path);
   });
-  vi.stubGlobal('fetch', mock);
+  stubFetch(mock);
   return mock;
 }
 
@@ -112,7 +113,7 @@ test('selected identified visit can be resumed after a page reload', async () =>
   window.history.replaceState({}, '', '/front-desk?visit=1');
   const detail = initialDetail({ status: 'IDENTIFIED', customerId: 1, version: 1 });
   detail.customer = customer;
-  vi.stubGlobal('fetch', vi.fn(async path => ok(path === '/api/visits/1' ? detail : [])));
+  stubFetch(vi.fn(async path => ok(path === '/api/visits/1' ? detail : [])));
   render(<FrontDesk />);
   expect(await screen.findByText('Demo Customer 001')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Route' }).disabled).toBe(false);
@@ -120,7 +121,7 @@ test('selected identified visit can be resumed after a page reload', async () =>
 
 test('late customer search response cannot replace the newer results', async () => {
   let finishOldSearch;
-  vi.stubGlobal('fetch', vi.fn(async path => {
+  stubFetch(vi.fn(async path => {
     if (path === '/api/visits?status=CHECKED_IN') return ok([initialDetail().visit]);
     if (path === '/api/visits/1') return ok(initialDetail());
     if (path === '/api/customers?q=001') return new Promise(resolve => { finishOldSearch = resolve; });
@@ -163,7 +164,7 @@ test('identified visit remains in creation order and can be resumed after select
     }
     throw new Error('Unexpected request: ' + path);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  stubFetch(fetchMock);
   render(<FrontDesk />);
   const user = userEvent.setup();
   expect(within((await screen.findByRole('button', { name: 'B0001' })).closest('tr')).getByText('Needs ID')).toBeTruthy();
@@ -213,7 +214,7 @@ test('resuming an identified visit shows FTR history and reload removes a report
   window.history.replaceState({}, '', '/front-desk?visit=1');
   let detail = { ...initialDetail({ status: 'IDENTIFIED', customerId: 1, version: 1 }), customer,
     missedAppointment: { id: 90, ticket: 'A0090', businessDate: '2026-09-04' } };
-  vi.stubGlobal('fetch', vi.fn(async path => ok(path === '/api/visits/1' ? detail : [])));
+  stubFetch(vi.fn(async path => ok(path === '/api/visits/1' ? detail : [])));
   render(<FrontDesk />);
   expect(await screen.findByText('Customer has a missed appointment (FTR).')).toBeTruthy();
   detail = { ...detail, missedAppointment: null };

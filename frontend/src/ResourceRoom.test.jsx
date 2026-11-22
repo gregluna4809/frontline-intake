@@ -1,3 +1,4 @@
+import { stubFetch } from './testPhase2Reads.js';
 import { saveAuth } from './auth.js';
 vi.mock('./SimulatorControl.jsx', () => ({ default: () => null }));
 import React from 'react';
@@ -71,7 +72,7 @@ function mockRoom({ conflict = false } = {}) {
       : resource);
     return ok({});
   });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve(ok({ isOpen: true, currentBusinessDate: '2026-09-08' })) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   return { state, fetchMock };
@@ -183,7 +184,7 @@ test('polling reloads both inventory and waiting visits after five seconds', asy
 });
 
 test('failed inventory load does not display a misleading empty queue', async () => {
-  vi.stubGlobal('fetch', vi.fn(async path => {
+  stubFetch(vi.fn(async path => {
     if (path === '/api/business-status') return ok({ isOpen: true, currentBusinessDate: '2026-09-08' });
     if (path === '/api/staff') return ok([]);
     throw new Error('Offline');

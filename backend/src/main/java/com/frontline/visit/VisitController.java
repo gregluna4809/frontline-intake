@@ -139,5 +139,12 @@ public class VisitController {
     }
 
     public record AssignStaffRequest(@NotNull @Positive Long staffId) {}
+    @PostMapping("/{id}/phone-override")
+    public ResponseEntity<VisitService.VisitDetail> phoneOverride(@PathVariable long id,
+            @Valid @RequestBody PhoneOverrideRequest request,
+            @RequestHeader(value = "If-Match", required = false) String version) {
+        return response(service.phoneOverride(id, expectedVersion(version), request.note()));
+    }
+    public record PhoneOverrideRequest(@jakarta.validation.constraints.NotBlank String note) {}
     public record IdentifyRequest(@NotNull @Positive Long customerId) {}
 }

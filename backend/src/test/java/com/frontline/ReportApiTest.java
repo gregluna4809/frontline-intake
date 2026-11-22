@@ -122,7 +122,7 @@ class ReportApiTest {
         JsonNode report = summary(DAY, DAY).get(0);
         assertThat(report.path("businessDate").asText()).isEqualTo(DAY.toString());
         JsonNode volume = report.path("volumeByCategory");
-        assertThat(volume.size()).isEqualTo(8);
+        assertThat(volume.size()).isEqualTo(9);
         for (Visit.Reason reason : Visit.Reason.values()) {
             assertThat(volume.path(reason.name()).asLong()).isEqualTo(reason == Visit.Reason.PHONE_ACCESS ? 2 : 1);
         }
@@ -179,7 +179,7 @@ class ReportApiTest {
         assertThat(reports.get(0).path("businessDate").asText()).isEqualTo(DAY.toString());
         assertThat(reports.get(3).path("businessDate").asText()).isEqualTo(DAY.plusDays(4).toString());
         for (JsonNode report : reports) {
-            assertThat(report.path("volumeByCategory").size()).isEqualTo(8);
+            assertThat(report.path("volumeByCategory").size()).isEqualTo(9);
             report.path("volumeByCategory").forEach(count -> assertThat(count.asLong()).isZero());
             assertThat(report.path("ftr").path("scheduledAppointments").asLong()).isZero();
             assertThat(report.path("ftr").path("ftrCount").asLong()).isZero();

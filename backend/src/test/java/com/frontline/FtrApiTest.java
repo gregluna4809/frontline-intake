@@ -48,6 +48,8 @@ class FtrApiTest {
     @BeforeEach
     void clearVisits() {
         jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM help_request");
+        jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event");
         jdbc.execute("DELETE FROM visit");
         jdbc.execute("TRUNCATE business_day_snapshot, business_day_rollover");

@@ -6,7 +6,7 @@ public record SimulatorProperties(boolean enabled, int arrivalsPerMinute, Map<St
                                   Map<String,Integer> appointmentWeights) {
     public SimulatorProperties {
         if (arrivalsPerMinute < 0) throw new IllegalArgumentException("Simulator rate must be nonnegative.");
-        weights = validate(weights, "PHONE_ACCESS","APPOINTMENT","COMPUTER_ACCESS","JOB_SEARCH","DOCUMENT_SERVICES","BENEFITS_ASSISTANCE","OTHER");
+        weights = validate(weights, "PHONE_ACCESS","UI_ACCOUNT","APPOINTMENT","COMPUTER_ACCESS","JOB_SEARCH","DOCUMENT_SERVICES","BENEFITS_ASSISTANCE","OTHER");
         appointmentWeights = validate(appointmentWeights, "MANDATORY","JOB_SEARCH_ASSISTANCE");
     }
     private static Map<String,Integer> validate(Map<String,Integer> weights, String... allowed) {

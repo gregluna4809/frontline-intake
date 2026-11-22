@@ -1,3 +1,4 @@
+import { stubFetch } from './testPhase2Reads.js';
 import { saveAuth } from './auth.js';
 vi.mock('./SimulatorControl.jsx', () => ({ default: () => null }));
 import React from 'react';
@@ -18,7 +19,7 @@ test('kiosk sends walk-in type and selected reason and displays the returned tic
     ok: true,
     json: async () => ({ id: 1, ticket: 'B0001', reason: 'PHONE_ACCESS' }),
   });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
@@ -45,7 +46,7 @@ test('failed check-in shows an error and permits retry without losing the reason
       ok: true,
       json: async () => ({ id: 2, ticket: 'B0002', reason: 'JOB_SEARCH' }),
     });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
@@ -69,7 +70,7 @@ test('front desk loads checked-in visits with their original reason', async () =
       status: 'CHECKED_IN', createdAt: '2026-09-08T12:00:00Z',
     }],
   });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : (path === '/api/staff' || path === '/api/visits?status=IDENTIFIED')
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
@@ -86,7 +87,7 @@ test('front desk reports a failed queue load and can refresh successfully', asyn
   const fetchMock = vi.fn()
     .mockResolvedValueOnce({ ok: false, json: async () => ({ detail: 'Queue unavailable.' }) })
     .mockResolvedValueOnce({ ok: true, json: async () => [] });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : (path === '/api/staff' || path === '/api/visits?status=IDENTIFIED')
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
@@ -106,7 +107,7 @@ test.each([
       id: 1, ticket: 'A0001', visitType: 'APPOINTMENT', appointmentCategory: category, appointmentType: null,
     }),
   });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);
@@ -136,7 +137,7 @@ test('switching from appointment to walk-in discards the category', async () => 
     ok: true,
     json: async () => ({ id: 1, ticket: 'B0001', visitType: 'WALK_IN', reason: 'JOB_SEARCH' }),
   });
-  vi.stubGlobal('fetch', (path, options) => path === '/api/business-status'
+  stubFetch((path, options) => path === '/api/business-status'
     ? Promise.resolve({ ok: true, json: async () => ({ isOpen: true, currentBusinessDate: '2026-09-08' }) }) : path === '/api/staff'
     ? Promise.resolve({ ok: true, json: async () => [] }) : fetchMock(path, options));
   render(<App />);

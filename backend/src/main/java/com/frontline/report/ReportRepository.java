@@ -18,6 +18,7 @@ public class ReportRepository {
         return jdbc.sql("""
                 SELECT v.business_date,
                     count(*) FILTER (WHERE v.visit_type = 'WALK_IN' AND v.reason = 'PHONE_ACCESS') AS phone_access,
+                    count(*) FILTER (WHERE v.visit_type = 'WALK_IN' AND v.reason = 'UI_ACCOUNT') AS ui_account,
                     count(*) FILTER (WHERE v.visit_type = 'WALK_IN' AND v.reason = 'COMPUTER_ACCESS') AS computer_access,
                     count(*) FILTER (WHERE v.visit_type = 'WALK_IN' AND v.reason = 'DOCUMENT_SERVICES') AS document_services,
                     count(*) FILTER (WHERE v.visit_type = 'WALK_IN' AND v.reason = 'BENEFITS_ASSISTANCE') AS benefits_assistance,

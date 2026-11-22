@@ -62,6 +62,7 @@ class AdminApiTest {
     void reset() {
         when(clock.instant()).thenReturn(Instant.parse("2026-09-14T16:00:00Z"));
         jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM help_request"); jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event"); jdbc.execute("DELETE FROM visit");
         jdbc.execute("TRUNCATE call_out, business_day_snapshot, business_day_rollover RESTART IDENTITY");
         jdbc.execute("DELETE FROM staff_rotation WHERE staff_id > 10");

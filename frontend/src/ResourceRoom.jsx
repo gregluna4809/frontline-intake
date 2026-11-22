@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api.js';
 import { waitingTime } from './time.js';
+import { useAuth } from './auth.js';
 
 export const RESOURCE_ALERT_MINUTES = 45;
 const groups = [['PHONE', 'Phones'], ['COMPUTER', 'Computers'], ['STATION', 'Stations']];
 const typeLabels = { PHONE: 'Phone', COMPUTER: 'Computer', STATION: 'Station' };
 
-export default function ResourceRoom() {
+export default function ResourceRoom({ businessDate }) {
+  const auth = useAuth();
   const [snapshot, setSnapshot] = useState(null);
   const [queueError, setQueueError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -25,12 +27,13 @@ export default function ResourceRoom() {
     async function load() {
       const currentRevision = revision.current;
       try {
-        const [resources, waiting] = await Promise.all([
+        const [resources, waiting, helpRequests] = await Promise.all([
           request('/api/resources', { signal: controller.signal }),
           request('/api/visits?status=WAITING_RESOURCE', { signal: controller.signal }),
+          request('/api/help-requests?businessDate=' + businessDate + '&open=true', { signal: controller.signal }),
         ]);
         if (active && currentRevision === revision.current && !submitting.current) {
-          setSnapshot({ resources, waiting });
+          setSnapshot({ resources, waiting, helpRequests });
           setQueueError('');
           setNeedsRefresh(false);
           setNow(Date.now());
@@ -46,14 +49,14 @@ export default function ResourceRoom() {
     }
     load();
     return () => { active = false; controller.abort(); clearTimeout(timer); };
-  }, [refresh]);
+  }, [refresh, businessDate]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  async function mutate(visit, action) {
+  async function mutate(visit, action, body) {
     if (submitting.current || needsRefresh) return;
     submitting.current = true;
     revision.current++;
@@ -64,13 +67,41 @@ export default function ResourceRoom() {
     try {
       const result = await request('/api/visits/' + visit.id + '/' + action, {
         method: 'POST', headers: { 'If-Match': '"' + visit.version + '"' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      const outcome = action === 'assign' ? 'assigned to ' + result.resource.label :
+      const outcome = action === 'help-requests' ? 'help requested' : action === 'phone-override' ? 'moved to phone service' : action === 'assign' ? 'assigned to ' + result.resource.label :
         action === 'left' ? 'marked left' : 'closed';
       setNotice('Ticket ' + visit.ticket + ' ' + outcome + '.');
     } catch (failure) {
       setActionError(failure.message + ' The inventory will refresh before another action is allowed.');
     } finally {
+      revision.current++;
+      submitting.current = false;
+      setPending(null);
+      setRefresh(value => value + 1);
+    }
+  }
+
+  function override(visit) {
+    const note = window.prompt('Phone override note');
+    if (note?.trim()) mutate(visit, 'phone-override', { note });
+  }
+
+  async function helpAction(help, action, outcome) {
+    if (submitting.current || needsRefresh) return;
+    submitting.current = true;
+    revision.current++;
+    setPending({ id: help.id, action });
+    setNeedsRefresh(true);
+    setActionError('');
+    try {
+      await request('/api/help-requests/' + help.id + '/' + action, {
+        method: 'POST', headers: { 'If-Match': '"' + help.version + '"' },
+        ...(outcome ? { body: JSON.stringify({ outcome }) } : {}),
+      });
+      setNotice('Help request updated.');
+    } catch (failure) { setActionError(failure.message); }
+    finally {
       revision.current++;
       submitting.current = false;
       setPending(null);
@@ -124,6 +155,10 @@ export default function ResourceRoom() {
                             <p className="tile-time">At resource: {waitingTime(resource.assignedAt, now)}</p>
                             {overdue && <p className="overdue-label">Over {RESOURCE_ALERT_MINUTES} min</p>}
                             <div className="tile-actions">
+                              {resource.type === 'COMPUTER' && !snapshot.helpRequests.some(help => help.visitId === resource.visitId) &&
+                                <button disabled={disabled || !canAct} onClick={() => mutate(visit, 'help-requests')}>Request help</button>}
+                              {auth?.role === 'CENTER_MANAGER' && <button disabled={disabled || !canAct}
+                                onClick={() => override(visit)}>Phone override</button>}
                               <button className="primary" aria-label={'Close ' + resource.ticket}
                                 disabled={disabled || !canAct} onClick={() => mutate(visit, 'close')}>Close</button>
                               <button className="secondary" aria-label={'Left ' + resource.ticket}
@@ -156,6 +191,7 @@ export default function ResourceRoom() {
                         <p className="tile-time">Waiting: {waitingTime(visit.waitingSince, now)}</p>
                         {!hasFree && <p className="no-resource">No matching resource free</p>}
                         <div className="tile-actions">
+                          {auth?.role === 'CENTER_MANAGER' && <button disabled={disabled} onClick={() => override(visit)}>Phone override</button>}
                           <button className="primary" aria-label={'Assign ' + visit.ticket}
                             disabled={disabled || !hasFree} onClick={() => mutate(visit, 'assign')}>Assign</button>
                           <button className="secondary" aria-label={'Left ' + visit.ticket}
@@ -168,6 +204,24 @@ export default function ResourceRoom() {
               </ul>}
           </aside>
         </div>}
+      {snapshot && <section aria-label="Help requests">
+        <h3>Help requests</h3>
+        {snapshot.helpRequests.length === 0 ? <p>No open help requests.</p> : <ul>
+          {snapshot.helpRequests.map(help => <li key={help.id}>
+            <article aria-label={'Help ' + help.ticket}>
+              <strong>{help.ticket}</strong> · {help.resourceLabel} · {help.roomName} · {waitingTime(help.raisedAt, now)}
+              <p>Claimed by: {help.claimedByName || 'Unclaimed'}</p>
+              {help.claimedByStaffId == null && auth?.role !== 'CLERK' &&
+                <button disabled={disabled} onClick={() => helpAction(help, 'claim')}>Claim</button>}
+              {help.claimedByStaffId != null && (help.claimedByStaffId === auth?.staffId ||
+                ['SUPERVISING_LSR', 'CENTER_MANAGER'].includes(auth?.role)) && <>
+                {[['RESOLVED_ONLINE', 'Resolved online'], ['NEEDS_PHONE', 'Needs phone'], ['REFERRED_OUT', 'Referred out']].map(([outcome, label]) =>
+                  <button key={outcome} disabled={disabled} onClick={() => helpAction(help, 'close', outcome)}>{label}</button>)}
+              </>}
+            </article>
+          </li>)}
+        </ul>}
+      </section>}
       <p className="queue-note">Refreshes every 5 seconds. Occupied visits over {RESOURCE_ALERT_MINUTES} minutes are flagged.</p>
     </section>
   );

@@ -28,9 +28,12 @@ public class VisitService {
     private final BusinessCalendar calendar;
     private final TicketSequenceService tickets;
     private final BusinessDayService days;
+    private final VisitReasonRepository reasons;
+    private final com.frontline.resource.ResourceSessionRepository sessions;
 
     public VisitService(VisitRepository repository, CustomerRepository customers, ResourceRepository resources,
-                        StaffRepository staff, BusinessCalendar calendar, TicketSequenceService tickets, BusinessDayService days) {
+                        StaffRepository staff, BusinessCalendar calendar, TicketSequenceService tickets, BusinessDayService days,
+                        VisitReasonRepository reasons, com.frontline.resource.ResourceSessionRepository sessions) {
         this.repository = repository;
         this.customers = customers;
         this.resources = resources;
@@ -38,6 +41,8 @@ public class VisitService {
         this.calendar = calendar;
         this.tickets = tickets;
         this.days = days;
+        this.reasons = reasons;
+        this.sessions = sessions;
     }
 
     @Transactional
@@ -57,7 +62,9 @@ public class VisitService {
                     "WALK_IN requires only reason; APPOINTMENT requires appointmentCategory only.");
         }
         Visit.AppointmentStatus appointmentStatus = appointment ? Visit.AppointmentStatus.SCHEDULED : null;
-        Visit visit = repository.create(visitType, reason, appointmentCategory, appointmentStatus, tickets.prepareForCreation());
+        LocalDate date = tickets.prepareForCreation();
+        reasons.requireActive(reason, date);
+        Visit visit = repository.create(visitType, reason, appointmentCategory, appointmentStatus, date);
         if ("KIOSK".equals(actor)) repository.recordCheckIn(visit);
         else repository.recordCheckIn(visit, actor);
         return visit;
@@ -83,9 +90,15 @@ public class VisitService {
         return describe(findVisit(id));
     }
 
+    @Transactional(readOnly = true)
+    public List<String> activeReasonCodes() {
+        return reasons.active(calendar.currentBusinessDate()).stream().map(VisitReasonRepository.Reason::code).toList();
+    }
+
     @Transactional
     public VisitDetail identify(long id, long customerId, long expectedVersion) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.CHECKED_IN);
+        reasons.requireActive(previous.reason(), previous.businessDate());
         customers.findById(customerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found."));
         Visit updated = transition(previous, Visit.Status.IDENTIFIED, customerId, null);
@@ -99,7 +112,10 @@ public class VisitService {
             return describe(transition(previous, Visit.Status.WAITING_STAFF, previous.customerId(), null));
         }
         Resource resource = resources.assignLowestFree(previous.requiredResourceType(), previous.businessDate()).orElse(null);
-        if (resource != null) resources.setOccupant(resource.id(), previous.id());
+        if (resource != null) {
+            resources.setOccupant(resource.id(), previous.id());
+            sessions.open(previous, resource.id());
+        }
         Visit.Status next = resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE;
         Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id());
         return describe(updated);
@@ -162,7 +178,42 @@ public class VisitService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "No matching resource is free. Refresh the inventory before trying again."));
         resources.setOccupant(resource.id(), previous.id());
+        sessions.open(previous, resource.id());
         return describe(transition(previous, Visit.Status.AT_RESOURCE, previous.customerId(), resource.id()));
+    }
+
+    @Transactional
+    public VisitDetail phoneOverride(long id, long expectedVersion, String note) {
+        Visit previous = requireStatus(id, expectedVersion, Visit.Status.AT_RESOURCE,
+                Visit.Status.WAITING_RESOURCE, Visit.Status.IDENTIFIED);
+        if (note == null || note.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A phone override note is required.");
+        }
+        return moveToPhone(previous, "phone override: " + note.strip());
+    }
+
+    @Transactional
+    public VisitDetail needsPhone(long id, long requestId) {
+        days.resetResourcesForOpening();
+        Visit previous = requireStatus(findVisit(id), Visit.Status.AT_RESOURCE);
+        return moveToPhone(previous, "help request " + requestId + ": needs phone");
+    }
+
+    private VisitDetail moveToPhone(Visit previous, String note) {
+        if (previous.visitType() != Visit.VisitType.WALK_IN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Phone handoff requires a walk-in.");
+        }
+        sessions.end(previous.id(), "TO_PHONE");
+        if (previous.resourceId() != null) resources.release(previous.resourceId(), previous.id());
+        repository.requestPhone(previous.id());
+        Resource resource = resources.assignLowestFree(Resource.Type.PHONE, previous.businessDate()).orElse(null);
+        if (resource != null) {
+            resources.setOccupant(resource.id(), previous.id());
+            sessions.open(previous, resource.id());
+        }
+        Visit updated = transition(previous, resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE,
+                previous.customerId(), resource == null ? null : resource.id(), note);
+        return describe(updated);
     }
 
     @Transactional
@@ -195,6 +246,7 @@ public class VisitService {
     }
 
     private VisitDetail finish(Visit previous, Visit.Status next, String note) {
+        sessions.end(previous.id(), next.name());
         // Resource rows are locked before the visit update, matching assignment
         // lock order. An optimistic conflict or event failure rolls back both.
         if (previous.resourceId() != null) resources.release(previous.resourceId(), previous.id());

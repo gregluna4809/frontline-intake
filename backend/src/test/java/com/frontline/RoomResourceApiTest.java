@@ -43,6 +43,8 @@ class RoomResourceApiTest {
     @BeforeEach
     void reset() {
         jdbc.execute("UPDATE resource SET status = 'FREE', active_visit_id = NULL");
+        jdbc.execute("DELETE FROM help_request");
+        jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event");
         jdbc.execute("DELETE FROM visit");
         jdbc.execute("TRUNCATE business_day_snapshot, business_day_rollover");
@@ -85,7 +87,9 @@ class RoomResourceApiTest {
         at("2026-11-30");
         days.resetResourcesForOpening();
         jdbc.update("UPDATE resource SET status = 'OCCUPIED' WHERE type = 'PHONE' AND room_id = (SELECT id FROM room WHERE code = 'RESOURCE_ROOM')");
-        Visit visit = routePhone();
+        Visit visit = visits.checkIn(Visit.VisitType.WALK_IN, Visit.Reason.UI_ACCOUNT, null);
+        visits.identify(visit.id(), 1, 0);
+        visit = visits.phoneOverride(visit.id(), 1, "Synthetic phone access").visit();
         assertThat(visit.status()).isEqualTo(Visit.Status.WAITING_RESOURCE);
         assertThat(visit.resourceId()).isNull();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resource WHERE label LIKE 'OR-%' AND status = 'FREE'", Integer.class)).isEqualTo(11);

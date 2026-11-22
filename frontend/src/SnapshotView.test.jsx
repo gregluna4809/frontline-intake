@@ -1,3 +1,4 @@
+import { stubFetch } from './testPhase2Reads.js';
 import { getAuth, saveAuth } from './auth.js';
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -36,7 +37,7 @@ function mockBusiness(initial = closed) {
     if (path.startsWith('/api/visits?')) return ok([]);
     throw new Error('Unexpected request: ' + path);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  stubFetch(fetchMock);
   return { state, fetchMock };
 }
 

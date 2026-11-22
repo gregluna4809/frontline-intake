@@ -25,6 +25,12 @@ class TrafficSimulatorTest {
     @Autowired VisitService visits;
     @Autowired TrafficSimulator configured;
     @Autowired SimulatorProperties properties;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean(name = "businessClock") java.time.Clock clock;
+
+    @org.junit.jupiter.api.BeforeEach
+    void pinBusinessDate() {
+        org.mockito.Mockito.when(clock.instant()).thenReturn(java.time.Instant.parse("2026-11-25T17:00:00Z"));
+    }
 
     @ParameterizedTest
     @CsvSource({"PHONE_ACCESS,MANDATORY", "COMPUTER_ACCESS,MANDATORY", "JOB_SEARCH,MANDATORY",

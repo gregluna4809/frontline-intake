@@ -19,14 +19,16 @@ public record Visit(
         Instant closedAt,
         long version,
         Long previousVisitId,
-        LocalDate businessDate
+        LocalDate businessDate,
+        @com.fasterxml.jackson.annotation.JsonIgnore Resource.Type requestedResourceType
 ) {
     public enum VisitType { WALK_IN, APPOINTMENT }
     public Resource.Type requiredResourceType() {
         if (visitType == VisitType.APPOINTMENT) return null;
+        if (requestedResourceType != null) return requestedResourceType;
         return switch (reason) {
             case PHONE_ACCESS -> Resource.Type.PHONE;
-            case COMPUTER_ACCESS, JOB_SEARCH -> Resource.Type.COMPUTER;
+            case UI_ACCOUNT, COMPUTER_ACCESS, JOB_SEARCH -> Resource.Type.COMPUTER;
             case DOCUMENT_SERVICES, BENEFITS_ASSISTANCE, OTHER -> Resource.Type.STATION;
         };
     }
@@ -35,7 +37,7 @@ public record Visit(
     public enum AppointmentCategory { MANDATORY, JOB_SEARCH_ASSISTANCE }
     public enum Reason {
         PHONE_ACCESS, COMPUTER_ACCESS, DOCUMENT_SERVICES,
-        BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER
+        BENEFITS_ASSISTANCE, JOB_SEARCH, OTHER, UI_ACCOUNT
     }
     public enum Status {
         CHECKED_IN, IDENTIFIED, AT_RESOURCE, WAITING_RESOURCE, WAITING_STAFF, CLOSED, LEFT

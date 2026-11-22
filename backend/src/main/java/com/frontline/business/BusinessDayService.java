@@ -25,10 +25,12 @@ public class BusinessDayService {
     private final StaffRepository staff;
     private final CoverageRepository coverage;
     private final ObjectMapper mapper;
+    private final com.frontline.resource.ResourceSessionRepository sessions;
 
     public BusinessDayService(JdbcClient jdbc, BusinessCalendar calendar, VisitRepository visits,
                               ResourceRepository resources, StaffRepository staff,
-                              CoverageRepository coverage, ObjectMapper mapper) {
+                              CoverageRepository coverage, ObjectMapper mapper,
+                              com.frontline.resource.ResourceSessionRepository sessions) {
         this.jdbc = jdbc;
         this.calendar = calendar;
         this.visits = visits;
@@ -36,6 +38,7 @@ public class BusinessDayService {
         this.staff = staff;
         this.coverage = coverage;
         this.mapper = mapper;
+        this.sessions = sessions;
     }
 
     // Called before mutations, opening reset, and scheduled close. The same lock
@@ -66,6 +69,7 @@ public class BusinessDayService {
         if (inserted == 1) {
             // Preserve closing snapshots first, then detect FTR before resources/tickets reset.
             visits.closeMissedAppointments(date);
+            sessions.rollover();
             jdbc.sql("UPDATE resource SET status = 'FREE', active_visit_id = NULL").update();
         }
     }

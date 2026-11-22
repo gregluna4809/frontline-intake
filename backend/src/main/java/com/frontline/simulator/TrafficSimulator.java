@@ -36,9 +36,15 @@ public class TrafficSimulator {
     @Scheduled(initialDelay = 60000, fixedDelay = 60000)
     public synchronized void tick() {
         if (!running) return;
+        var activeReasons = visits.activeReasonCodes();
+        Map<String, Integer> activeWeights = new java.util.LinkedHashMap<>();
+        properties.weights().forEach((choice, weight) -> {
+            if (choice.equals("APPOINTMENT") || activeReasons.contains(choice)) activeWeights.put(choice, weight);
+        });
+        if (activeWeights.values().stream().mapToInt(Integer::intValue).sum() == 0) return;
         for (int i = 0; i < properties.arrivalsPerMinute(); i++) {
             try {
-                String choice = draw(properties.weights());
+                String choice = draw(activeWeights);
                 if (choice.equals("APPOINTMENT")) {
                     visits.checkIn(Visit.VisitType.APPOINTMENT, null,
                         Visit.AppointmentCategory.valueOf(draw(properties.appointmentWeights())), "SIMULATOR");

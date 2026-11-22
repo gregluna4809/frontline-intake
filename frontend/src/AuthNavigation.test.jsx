@@ -1,3 +1,4 @@
+import { stubFetch } from './testPhase2Reads.js';
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -20,6 +21,7 @@ afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); vi.r
 
 function mockApi(auth = account()) {
   const { fetchMock, state } = mockQueues();
+  stubFetch(fetchMock);
   const original = fetchMock.getMockImplementation();
   fetchMock.mockImplementation((path, options = {}) => {
     if (path === '/api/admin/staff') return Promise.resolve(ok([]));

@@ -151,6 +151,11 @@ public class VisitRepository {
                 .query(this::mapVisit).optional();
     }
 
+    public void requestPhone(long id) {
+        jdbc.sql("UPDATE visit SET requested_resource_type = 'PHONE' WHERE id = :id")
+                .param("id", id).update();
+    }
+
     public void recordTransition(Visit previous, Visit updated) {
         recordTransition(previous, updated, staffAssignmentNote(previous, updated));
     }
@@ -259,6 +264,8 @@ public class VisitRepository {
                 rs.getTimestamp("created_at").toInstant(),
                 closedAt == null ? null : closedAt.toInstant(),
                 rs.getLong("version"), rs.getObject("previous_visit_id", Long.class),
-                rs.getObject("business_date", LocalDate.class));
+                rs.getObject("business_date", LocalDate.class),
+                rs.getString("requested_resource_type") == null ? null
+                        : com.frontline.model.Resource.Type.valueOf(rs.getString("requested_resource_type")));
     }
 }

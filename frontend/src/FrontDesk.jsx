@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { appointmentCategoryLabel, reasonLabel, request } from './api.js';
+import { appointmentCategoryLabel, request } from './api.js';
+import useVisitReasons from './useVisitReasons.js';
 
-function purpose(visit) {
-  return visit.visitType === 'APPOINTMENT' ? appointmentCategoryLabel(visit.appointmentCategory) : reasonLabel(visit.reason);
+function purpose(visit, reasons) {
+  return visit.visitType === 'APPOINTMENT' ? appointmentCategoryLabel(visit.appointmentCategory)
+    : reasons.find(reason => reason.code === visit.reason)?.label || '\u2014';
 }
 
 function routingMessage(detail) {
@@ -14,7 +16,7 @@ function routingMessage(detail) {
   return null;
 }
 
-function VisitPanel({ visitId, onChanged }) {
+function VisitPanel({ visitId, onChanged, reasons }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -104,7 +106,7 @@ function VisitPanel({ visitId, onChanged }) {
       {loading ? <p role="status">Loading visit…</p> : detail && (
         <>
           <p className="eyebrow">{detail.visit.visitType === 'APPOINTMENT' ? 'Appointment category' : 'Reason for visit'}</p>
-          <p className="visit-purpose">{purpose(detail.visit)}</p>
+          <p className="visit-purpose">{purpose(detail.visit, reasons)}</p>
           {detail.customer ? (
             <div className="attached-customer" role="status">
               <span>Attached customer</span>
@@ -150,7 +152,8 @@ function VisitPanel({ visitId, onChanged }) {
   );
 }
 
-export default function FrontDesk() {
+export default function FrontDesk({ businessDate }) {
+  const activeReasons = useVisitReasons(businessDate);
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -207,7 +210,7 @@ export default function FrontDesk() {
         </div>
         <button className="secondary" onClick={() => setRefresh(value => value + 1)}>Refresh queue</button>
       </div>
-      {error && <p role="alert" className="error">{error} The queue may be out of date.</p>}
+      {(error || activeReasons.error) && <p role="alert" className="error">{error || activeReasons.error} The queue may be out of date.</p>}
       <div className={selectedId ? 'desk-layout with-panel' : 'desk-layout'}>
         <div>
           <div className="queue-panel" aria-busy={loading}>
@@ -221,7 +224,7 @@ export default function FrontDesk() {
                     <tr key={visit.id} className={selectedId === String(visit.id) ? 'selected-row' : ''}>
                       <td><button className="ticket-link" onClick={() => selectVisit(visit)}>{visit.ticket}</button></td>
                       <td><small>{visit.status === 'IDENTIFIED' ? 'Ready to route' : 'Needs ID'}</small></td>
-                      <td>{purpose(visit)}</td>
+                      <td>{purpose(visit, activeReasons.reasons)}</td>
                       <td>{new Date(visit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                     </tr>
                   ))}</tbody>
@@ -230,7 +233,7 @@ export default function FrontDesk() {
           </div>
           <p className="queue-note">Queue refreshes every 5 seconds.</p>
         </div>
-        {selectedId && <VisitPanel key={selectedId} visitId={selectedId} onChanged={visitChanged} />}
+        {selectedId && <VisitPanel key={selectedId} visitId={selectedId} onChanged={visitChanged} reasons={activeReasons.reasons} />}
       </div>
     </section>
   );

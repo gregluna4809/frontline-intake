@@ -5,7 +5,7 @@ export async function request(path, options = {}) {
   const pathname = new URL(path, window.location.origin).pathname;
   const login = pathname === '/api/auth/login' && method === 'POST';
   const publicRequest = login || (method === 'POST' && pathname === '/api/visits') ||
-    (method === 'GET' && ['/api/business-status', '/api/snapshot'].includes(pathname));
+    (method === 'GET' && ['/api/business-status', '/api/snapshot', '/api/visit-reasons'].includes(pathname));
   const requestToken = getAuth()?.token || null;
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (!publicRequest && requestToken) headers.Authorization = 'Bearer ' + requestToken;
@@ -30,6 +30,7 @@ export async function request(path, options = {}) {
 }
 
 export const reasons = [
+  ['UI_ACCOUNT', 'UI account help'],
   ['PHONE_ACCESS', 'Phone Access'],
   ['COMPUTER_ACCESS', 'Computer Access'],
   ['DOCUMENT_SERVICES', 'Document Services'],

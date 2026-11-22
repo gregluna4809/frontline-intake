@@ -25,6 +25,7 @@ simulator:
   arrivalsPerMinute: 4
   weights:
     PHONE_ACCESS: 70
+    UI_ACCOUNT: 70
     APPOINTMENT: 20
     COMPUTER_ACCESS: 3
     JOB_SEARCH: 2
