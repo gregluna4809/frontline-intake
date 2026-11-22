@@ -43,6 +43,7 @@ class RoomResourceApiTest {
     @BeforeEach
     void reset() {
         jdbc.execute("UPDATE resource SET status = 'FREE', active_visit_id = NULL");
+        jdbc.execute("DELETE FROM sim_task");
         jdbc.execute("DELETE FROM help_request");
         jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event");

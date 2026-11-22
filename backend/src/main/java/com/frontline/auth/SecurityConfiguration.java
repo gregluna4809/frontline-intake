@@ -113,6 +113,8 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/phone-override")
                             .hasAnyRole("SUPERVISING_LSR", "CENTER_MANAGER")
                         .requestMatchers("/api/admin/**").hasRole("ADMINISTRATOR")
+                        .requestMatchers(HttpMethod.GET, "/api/simulator/switches").hasAnyRole("CENTER_MANAGER", "ADMINISTRATOR", "SUPERVISING_LSR")
+                        .requestMatchers(HttpMethod.PUT, "/api/simulator/switches/{role}").hasAnyRole("CENTER_MANAGER", "ADMINISTRATOR")
                         .requestMatchers("/api/reports/**").hasAnyRole("CENTER_MANAGER", "ADMINISTRATOR")
                         .requestMatchers(HttpMethod.POST, "/api/visits/{id}/identify", "/api/visits/{id}/route")
                             .hasAnyRole("CLERK", "CENTER_MANAGER")

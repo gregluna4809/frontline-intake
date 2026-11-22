@@ -70,6 +70,7 @@ class AuthorizationApiTest {
     void reset() {
         when(clock.instant()).thenReturn(Instant.parse("2026-09-14T16:00:00Z"));
         jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM sim_task");
         jdbc.execute("DELETE FROM help_request");
         jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event");

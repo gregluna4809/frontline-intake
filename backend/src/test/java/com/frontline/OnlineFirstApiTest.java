@@ -61,11 +61,14 @@ class OnlineFirstApiTest {
     @Autowired VisitReasonRepository reasons;
     @Autowired HelpRequestService helpRequests;
     @MockitoSpyBean VisitRepository visitRepository;
+    @Autowired TrafficSimulator simulator;
+    @Autowired com.frontline.simulator.SimulatorRepository simulatorRepository;
 
     @BeforeEach
     void reset() {
         at("2026-11-30");
         jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM sim_task");
         jdbc.execute("DELETE FROM help_request");
         jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event");
@@ -277,10 +280,16 @@ class OnlineFirstApiTest {
 
     @ParameterizedTest @ValueSource(strings = {"2026-11-25", "2026-11-30"})
     void simulatorDrawsOnlyActiveReasons(String date) {
-        at(date);
-        var simulator = new TrafficSimulator(visits, new SimulatorProperties(false, 20,
-                Map.of("PHONE_ACCESS", 70, "UI_ACCOUNT", 70), Map.of("MANDATORY", 1)));
+        when(clock.instant()).thenReturn(Instant.parse(date + "T21:39:00Z"));
+        simulatorRepository.createDay(LocalDate.parse(date), 42, 20);
+        var activeSettings = com.frontline.simulator.SimulatorTestSettings.settings(
+                Map.of("PHONE_ACCESS", 70, "UI_ACCOUNT", 70), Map.of("MANDATORY", 1), 0);
+        var engine = new com.frontline.simulator.SimulatorEngine(simulatorRepository, activeSettings,
+                new com.frontline.simulator.SimulatorWork(simulatorRepository, activeSettings, visits), visits);
+        var simulator = new TrafficSimulator(engine, simulatorRepository, activeSettings,
+                new com.frontline.business.BusinessCalendar(clock, () -> java.util.Set.of()), clock);
         simulator.start(); simulator.tick();
+        simulator.stop();
         var created = visits.list(null);
         assertThat(created).hasSize(20);
         assertThat(created).allMatch(item -> item.visit().reason() == (date.equals("2026-11-25") ? Visit.Reason.PHONE_ACCESS : Visit.Reason.UI_ACCOUNT));

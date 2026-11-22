@@ -46,10 +46,13 @@ class BusinessApiTest {
     @Autowired TicketSequenceService tickets;
     @Autowired com.frontline.business.BusinessDayService days;
     @Autowired com.frontline.coverage.CoverageService coverage;
+    @Autowired com.frontline.simulator.TrafficSimulator simulator;
+    @Autowired com.frontline.simulator.SimulatorRepository simulatorRepository;
 
     @BeforeEach
     void clearVisits() {
         jdbc.execute("UPDATE resource SET active_visit_id = NULL, status = 'FREE'");
+        jdbc.execute("DELETE FROM sim_task");
         jdbc.execute("DELETE FROM help_request");
         jdbc.execute("DELETE FROM resource_session");
         jdbc.execute("DELETE FROM visit_event");
@@ -93,11 +96,11 @@ class BusinessApiTest {
         mvc.perform(post("/api/visits").contentType("application/json")
                         .content("{\"visitType\":\"WALK_IN\",\"reason\":\"PHONE_ACCESS\"}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.businessDate").value("2026-09-04"));
-        at("2026-09-08T12:30:00Z");
-        var simulator = new TrafficSimulator(visits, new SimulatorProperties(false, 1,
-                Map.of("APPOINTMENT", 1), Map.of("MANDATORY", 1)));
+        at("2026-09-08T20:39:00Z");
+        simulatorRepository.createDay(LocalDate.parse("2026-09-08"), 42, 1);
         simulator.start();
         simulator.tick();
+        simulator.stop();
         Visit visit = visits.list(null).getFirst().visit();
         assertThat(visit.businessDate()).isEqualTo(LocalDate.parse("2026-09-08"));
         assertThat(visits.detail(visit.id()).events().getFirst().actor()).isEqualTo("SIMULATOR");

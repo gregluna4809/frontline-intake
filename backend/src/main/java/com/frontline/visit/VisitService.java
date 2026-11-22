@@ -97,19 +97,29 @@ public class VisitService {
 
     @Transactional
     public VisitDetail identify(long id, long customerId, long expectedVersion) {
+        return identify(id, customerId, expectedVersion, null);
+    }
+
+    @Transactional
+    public VisitDetail identify(long id, long customerId, long expectedVersion, String actor) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.CHECKED_IN);
         reasons.requireActive(previous.reason(), previous.businessDate());
         customers.findById(customerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found."));
-        Visit updated = transition(previous, Visit.Status.IDENTIFIED, customerId, null);
+        Visit updated = transition(previous, Visit.Status.IDENTIFIED, customerId, null, null, actor);
         return describe(updated);
     }
 
     @Transactional
     public VisitDetail route(long id, long expectedVersion) {
+        return route(id, expectedVersion, null);
+    }
+
+    @Transactional
+    public VisitDetail route(long id, long expectedVersion, String actor) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.IDENTIFIED);
         if (previous.visitType() == Visit.VisitType.APPOINTMENT) {
-            return describe(transition(previous, Visit.Status.WAITING_STAFF, previous.customerId(), null));
+            return describe(transition(previous, Visit.Status.WAITING_STAFF, previous.customerId(), null, null, actor));
         }
         Resource resource = resources.assignLowestFree(previous.requiredResourceType(), previous.businessDate()).orElse(null);
         if (resource != null) {
@@ -117,7 +127,7 @@ public class VisitService {
             sessions.open(previous, resource.id());
         }
         Visit.Status next = resource == null ? Visit.Status.WAITING_RESOURCE : Visit.Status.AT_RESOURCE;
-        Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id());
+        Visit updated = transition(previous, next, previous.customerId(), resource == null ? null : resource.id(), null, actor);
         return describe(updated);
     }
 
@@ -128,9 +138,14 @@ public class VisitService {
 
     @Transactional
     public VisitDetail close(long id, long expectedVersion, Long callerLsrId) {
+        return close(id, expectedVersion, callerLsrId, null);
+    }
+
+    @Transactional
+    public VisitDetail close(long id, long expectedVersion, Long callerLsrId, String actor) {
         Visit previous = requireStatus(requireVersion(id, expectedVersion, callerLsrId),
                 Visit.Status.AT_RESOURCE, Visit.Status.WAITING_STAFF);
-        return finish(previous, Visit.Status.CLOSED);
+        return finish(previous, Visit.Status.CLOSED, null, actor);
     }
 
     @Transactional
@@ -156,11 +171,16 @@ public class VisitService {
 
     @Transactional
     public VisitDetail left(long id, long expectedVersion, Long callerLsrId) {
+        return left(id, expectedVersion, callerLsrId, null);
+    }
+
+    @Transactional
+    public VisitDetail left(long id, long expectedVersion, Long callerLsrId, String actor) {
         Visit previous = requireVersion(id, expectedVersion, callerLsrId);
         if (previous.status() == Visit.Status.CLOSED || previous.status() == Visit.Status.LEFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A completed visit cannot be marked left.");
         }
-        return finish(previous, Visit.Status.LEFT);
+        return finish(previous, Visit.Status.LEFT, null, actor);
     }
 
     private void requireAppointmentOwner(Visit visit, Long callerLsrId) {
@@ -173,13 +193,18 @@ public class VisitService {
 
     @Transactional
     public VisitDetail assign(long id, long expectedVersion) {
+        return assign(id, expectedVersion, null);
+    }
+
+    @Transactional
+    public VisitDetail assign(long id, long expectedVersion, String actor) {
         Visit previous = requireStatus(id, expectedVersion, Visit.Status.WAITING_RESOURCE);
         Resource resource = resources.assignLowestFree(previous.requiredResourceType(), previous.businessDate())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "No matching resource is free. Refresh the inventory before trying again."));
         resources.setOccupant(resource.id(), previous.id());
         sessions.open(previous, resource.id());
-        return describe(transition(previous, Visit.Status.AT_RESOURCE, previous.customerId(), resource.id()));
+        return describe(transition(previous, Visit.Status.AT_RESOURCE, previous.customerId(), resource.id(), null, actor));
     }
 
     @Transactional
@@ -246,11 +271,15 @@ public class VisitService {
     }
 
     private VisitDetail finish(Visit previous, Visit.Status next, String note) {
+        return finish(previous, next, note, null);
+    }
+
+    private VisitDetail finish(Visit previous, Visit.Status next, String note, String actor) {
         sessions.end(previous.id(), next.name());
         // Resource rows are locked before the visit update, matching assignment
         // lock order. An optimistic conflict or event failure rolls back both.
         if (previous.resourceId() != null) resources.release(previous.resourceId(), previous.id());
-        return describe(transition(previous, next, previous.customerId(), previous.resourceId(), note));
+        return describe(transition(previous, next, previous.customerId(), previous.resourceId(), note, actor));
     }
 
     private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId) {
@@ -258,9 +287,14 @@ public class VisitService {
     }
 
     private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId, String note) {
+        return transition(previous, next, customerId, resourceId, note, null);
+    }
+
+    private Visit transition(Visit previous, Visit.Status next, Long customerId, Long resourceId, String note, String actor) {
         Visit updated = repository.transition(previous, next, customerId, resourceId)
                 .orElseThrow(this::staleVersion);
-        if (note == null) repository.recordTransition(previous, updated);
+        if (actor != null) repository.recordTransition(previous, updated, note, actor);
+        else if (note == null) repository.recordTransition(previous, updated);
         else repository.recordTransition(previous, updated, note);
         return updated;
     }

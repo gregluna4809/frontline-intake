@@ -19,8 +19,10 @@ class BusinessSchedulesTest {
     @Test
     void minuteControlStartsOnlyWhenOpenAndStopsAfterClosing() {
         Clock clock = mock(Clock.class);
-        var simulator = spy(new TrafficSimulator(mock(VisitService.class), new SimulatorProperties(false, 1,
-                Map.of("PHONE_ACCESS", 1), Map.of("MANDATORY", 1))));
+        var repository = mock(com.frontline.simulator.SimulatorRepository.class);
+        when(repository.day(any())).thenReturn(java.util.Optional.empty());
+        var simulator = spy(new TrafficSimulator(mock(com.frontline.simulator.SimulatorEngine.class), repository,
+                mock(SimulatorProperties.class), TestHolidays.calendar(clock), clock));
         var schedules = new BusinessSchedules(TestHolidays.calendar(clock), simulator, mock(TicketSequenceService.class), mock(BusinessDayService.class));
         when(clock.instant()).thenReturn(Instant.parse("2026-09-08T12:29:00Z"));
         schedules.reconcileSimulator();
