@@ -49,6 +49,39 @@ services:
     networks:
       - edge
 
+  frontline-simulator:
+    build: ./simulator
+    restart: unless-stopped
+    profiles: ["simulator"]
+    networks:
+      - default
+    environment:
+      FRONTLINE_API_BASE: http://frontline-backend:8080
+      SIM_BOT_PASSWORD: ${SIM_BOT_PASSWORD:?Set SIM_BOT_PASSWORD in .env}
+      SIM_CLERK_USERS: "${SIM_CLERK_USERS:-bot-clerk-01,bot-clerk-02}"
+      SIM_RR_LSR_USERS: "${SIM_RR_LSR_USERS:-bot-lsr-01,bot-lsr-02,bot-lsr-03,bot-lsr-04}"
+      SIM_APPT_LSR_USERS: "${SIM_APPT_LSR_USERS:-bot-lsr-05,bot-lsr-06,bot-lsr-07,bot-lsr-08}"
+      SIM_SUPERVISOR_USER: "${SIM_SUPERVISOR_USER:-bot-supervisor-01}"
+      SIM_TICK_SECONDS: "${SIM_TICK_SECONDS:-2}"
+      SIM_TARGET_MIN: "${SIM_TARGET_MIN:-30}"
+      SIM_TARGET_MAX: "${SIM_TARGET_MAX:-40}"
+      SIM_MAX_ARRIVALS_PER_TICK: "${SIM_MAX_ARRIVALS_PER_TICK:-3}"
+      SIM_SESSION_SECONDS_PHONE: "${SIM_SESSION_SECONDS_PHONE:-60-180}"
+      SIM_SESSION_SECONDS_COMPUTER: "${SIM_SESSION_SECONDS_COMPUTER:-90-300}"
+      SIM_SESSION_SECONDS_STATION: "${SIM_SESSION_SECONDS_STATION:-30-90}"
+      SIM_APPOINTMENT_SECONDS: "${SIM_APPOINTMENT_SECONDS:-120-360}"
+      SIM_HELP_RATE_UI: "${SIM_HELP_RATE_UI:-0.40}"
+      SIM_HELP_RATE_OTHER: "${SIM_HELP_RATE_OTHER:-0.15}"
+      SIM_NEEDS_PHONE_RATE: "${SIM_NEEDS_PHONE_RATE:-0.30}"
+      SIM_REFERRED_OUT_RATE: "${SIM_REFERRED_OUT_RATE:-0.05}"
+      SIM_LEAVE_EARLY_RATE: "${SIM_LEAVE_EARLY_RATE:-0.05}"
+      SIM_CLAIM_DELAY_SECONDS: "${SIM_CLAIM_DELAY_SECONDS:-5-20}"
+      SIM_HELP_WORK_SECONDS: "${SIM_HELP_WORK_SECONDS:-15-60}"
+      SIM_CLERK_DELAY_SECONDS: "${SIM_CLERK_DELAY_SECONDS:-3-10}"
+      SIM_SEED: "${SIM_SEED:-}"
+    depends_on:
+      - frontline-backend
+
 volumes:
   postgres_data:
 

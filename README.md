@@ -376,3 +376,46 @@ npm run build
 ```
 
 Frontend tests cover both kiosk types, clearing incompatible choices, queue loading, customer attachment, routing outcomes, supervisor grouping and assignment/reassignment, My Queue filtering and closing, role navigation and the legacy redirect, stale-version recovery, resuming an identified visit, and ignoring obsolete search responses. Resource-room tests cover grouping and occupant details, the 45-minute boundary, availability-based Assign disabling, close/left/assign, conflicting assignment, and five-second polling.
+
+## Simulator
+
+The Python simulator is an external API client that checks visitors in at the kiosk and plays the clerk, resource-room LSR, appointment LSR, and supervising LSR roles. It processes eligible entries in the center's queues and respects staff assignments and help claims. The optional Compose service is private, with no published ports and access only to the internal default network.
+
+### Configuration
+
+Set `SIM_BOT_PASSWORD` in the untracked Compose `.env` or export it in the shell. The production Compose file requires this value during interpolation, including when the simulator profile is disabled. The provisioning script also reads `ADMIN_USERNAME` and `ADMIN_PASSWORD` from the environment. Use the seeded `staff10` account with the local demo password only on a throwaway database.
+
+| Environment variable | Default |
+| --- | --- |
+| `FRONTLINE_API_BASE` | `http://frontline-backend:8080` (fixed in Compose) |
+| `SIM_CLERK_USERS` | `bot-clerk-01,bot-clerk-02` |
+| `SIM_RR_LSR_USERS` | `bot-lsr-01` through `bot-lsr-04`, comma-separated |
+| `SIM_APPT_LSR_USERS` | `bot-lsr-05` through `bot-lsr-08`, comma-separated |
+| `SIM_SUPERVISOR_USER` | `bot-supervisor-01` |
+| `SIM_TICK_SECONDS` | `2` |
+| `SIM_TARGET_MIN`, `SIM_TARGET_MAX`, `SIM_MAX_ARRIVALS_PER_TICK` | `30`, `40`, `3` |
+| `SIM_SESSION_SECONDS_PHONE`, `SIM_SESSION_SECONDS_COMPUTER`, `SIM_SESSION_SECONDS_STATION` | `60-180`, `90-300`, `30-90` |
+| `SIM_APPOINTMENT_SECONDS` | `120-360` |
+| `SIM_HELP_RATE_UI`, `SIM_HELP_RATE_OTHER` | `0.40`, `0.15` |
+| `SIM_NEEDS_PHONE_RATE`, `SIM_REFERRED_OUT_RATE`, `SIM_LEAVE_EARLY_RATE` | `0.30`, `0.05`, `0.05` |
+| `SIM_CLAIM_DELAY_SECONDS`, `SIM_HELP_WORK_SECONDS`, `SIM_CLERK_DELAY_SECONDS` | `5-20`, `15-60`, `3-10` |
+| `SIM_SEED` | Unset for random operation, or set an integer for seeded draws |
+
+Timing ranges use inclusive `min-max` values in seconds. Below the served minimum, the simulator fills toward the midpoint using the full pipeline count. Inside the served band, it draws zero or one arrival per tick.
+
+### Run locally
+
+Use a fresh project name and supply the production Compose database and JWT environment values for a throwaway database. The production Compose file expects an existing `edge` network for the backend. On a local Docker instance where it does not already exist, create it with `docker network create edge`. Export the admin credentials before running the provisioning command.
+
+```bash
+export ALWAYS_OPEN=true JAVA_ENGINE_ENABLED=false
+docker compose -p frontline-sim-local -f docker-compose.prod.yml --profile simulator up -d --build frontline-backend
+# Wait for the backend to complete migrations and accept requests.
+docker compose -p frontline-sim-local -f docker-compose.prod.yml --profile simulator build frontline-simulator
+docker compose -p frontline-sim-local -f docker-compose.prod.yml --profile simulator run --rm --no-deps \
+  -e ADMIN_USERNAME -e ADMIN_PASSWORD frontline-simulator python scripts/create_bot_accounts.py
+docker compose -p frontline-sim-local -f docker-compose.prod.yml --profile simulator up -d frontline-simulator
+docker compose -p frontline-sim-local -f docker-compose.prod.yml --profile simulator logs -f frontline-simulator
+```
+
+The provisioning script creates missing accounts for the seeded bot staff and resets existing bot passwords to `SIM_BOT_PASSWORD`. To run it from Python 3.12 instead, change into `simulator/`, install `requirements.txt`, set `FRONTLINE_API_BASE` to your reachable backend origin, and run `python -m scripts.create_bot_accounts`. For the mocked tests, install `requirements-dev.txt` and run `python -m pytest` from the same directory.
